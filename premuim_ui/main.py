@@ -633,11 +633,11 @@ Enterprise Impact Assessment:
         control_frame.pack(fill=tk.X, pady=20, padx=50)
         
         buttons = [
-            ("🔐 VERIFY ENTERPRISE PAYMENT", '#0044cc', self.enhanced_verify),
-            ("📞 ENTERPRISE SUPPORT", '#008800', self.enhanced_support),
-            ("⚡ TEST DECRYPTION", '#884400', self.enhanced_decrypt),
-            ("🛑 TERMINATE ENTERPRISE SERVICE", '#cc0000', self.enhanced_terminate),
-            ("📊 ENTERPRISE IMPACT REPORT", '#440088', self.enhanced_report)
+            ("VERIFY ENTERPRISE PAYMENT", '#0044cc', self.enhanced_verify),
+            ("ENTERPRISE SUPPORT", '#008800', self.enhanced_support),
+            ("TEST DECRYPTION", '#884400', self.enhanced_decrypt),
+            ("TERMINATE ENTERPRISE SERVICE", '#cc0000', self.enhanced_terminate),
+            ("ENTERPRISE IMPACT REPORT", '#440088', self.enhanced_report)
         ]
         
         for text, color, command in buttons:
@@ -818,18 +818,18 @@ def main():
         
         result = messagebox.askokcancel(
             "PROFESSIONAL CYBERSECURITY SIMULATION",
-            "🚨 ENTERPRISE RANSOMWARE SERVICE DEMONSTRATION 🚨\n\n"
+            "ENTERPRISE RANSOMWARE SERVICE DEMONSTRATION 🚨\n\n"
             "This professional simulation demonstrates:\n"
-            "✅ Enterprise Windows Service Architecture\n"
-            "✅ Advanced Persistence Mechanisms\n"
-            "✅ Professional UI/UX Design\n"
-            "✅ Realistic Ransomware Behaviors\n"
-            "✅ Multiple Security Bypass Techniques\n\n"
+            "Enterprise Windows Service Architecture\n"
+            "Advanced Persistence Mechanisms\n"
+            "Professional UI/UX Design\n"
+            "Realistic Ransomware Behaviors\n"
+            "Multiple Security Bypass Techniques\n\n"
             "EDUCATIONAL SAFETY FEATURES:\n"
-            "❌ NO actual file encryption\n"
-            "❌ NO system damage\n"
-            "❌ NO data theft\n"
-            "✅ Complete removal tools provided\n\n"
+            "NO actual file encryption\n"
+            "NO system damage\n"
+            "NO data theft\n"
+            "Complete removal tools provided\n\n"
             "This is for academic cybersecurity education.\n"
             "Continue with professional demonstration?"
         )
