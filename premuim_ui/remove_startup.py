@@ -22,11 +22,11 @@ class ComprehensiveRemovalTool:
                 with winreg.OpenKey(key, subkey, 0, winreg.KEY_SET_VALUE) as reg_key:
                     try:
                         winreg.DeleteValue(reg_key, "WindowsSystemUpdate")
-                        messages.append("✅ Registry startup entry removed")
+                        messages.append("Registry startup entry removed")
                     except FileNotFoundError:
-                        messages.append("ℹ️ No registry startup entry found")
+                        messages.append("No registry startup entry found")
             except Exception as e:
-                messages.append(f"❌ Registry removal failed: {e}")
+                messages.append(f"Registry removal failed: {e}")
                 success = False
             
             # 2. Kill any running Python processes (service)
@@ -34,47 +34,47 @@ class ComprehensiveRemovalTool:
                 # Kill pythonw.exe processes (background service)
                 subprocess.run(['taskkill', '/f', '/im', 'pythonw.exe'], 
                              capture_output=True, text=True)
-                messages.append("✅ Background service processes killed")
+                messages.append("Background service processes killed")
             except Exception as e:
-                messages.append(f"⚠️ Process kill: {e}")
+                messages.append(f"Process kill: {e}")
             
             # 3. Remove VBS script
             try:
                 vbs_path = os.path.join(os.getenv('APPDATA'), 'Microsoft', 'WindowsUpdate.vbs')
                 if os.path.exists(vbs_path):
                     os.remove(vbs_path)
-                    messages.append("✅ VBS service script removed")
+                    messages.append("VBS service script removed")
                 else:
-                    messages.append("ℹ️ No VBS script found")
+                    messages.append("No VBS script found")
             except Exception as e:
-                messages.append(f"❌ VBS removal failed: {e}")
+                messages.append(f"VBS removal failed: {e}")
             
             # 4. Remove batch file
             try:
                 batch_path = os.path.join(os.getenv('APPDATA'), 'Microsoft', 'WindowsUpdate.bat')
                 if os.path.exists(batch_path):
                     os.remove(batch_path)
-                    messages.append("✅ Batch file removed")
+                    messages.append("Batch file removed")
                 else:
-                    messages.append("ℹ️ No batch file found")
+                    messages.append("No batch file found")
             except Exception as e:
-                messages.append(f"❌ Batch file removal failed: {e}")
+                messages.append(f"Batch file removal failed: {e}")
             
             # 5. Remove any executable copies
             try:
                 exe_path = os.path.join(os.getenv('APPDATA'), 'Microsoft', 'SystemUpdate.exe')
                 if os.path.exists(exe_path):
                     os.remove(exe_path)
-                    messages.append("✅ Executable copy removed")
+                    messages.append("Executable copy removed")
                 else:
-                    messages.append("ℹ️ No executable copy found")
+                    messages.append("No executable copy found")
             except Exception as e:
-                messages.append(f"❌ Executable removal failed: {e}")
+                messages.append(f"Executable removal failed: {e}")
             
             return success, messages
             
         except Exception as e:
-            return False, [f"❌ Removal failed: {e}"]
+            return False, [f"Removal failed: {e}"]
     
     @staticmethod
     def show_removal_dialog():
@@ -105,10 +105,10 @@ class ComprehensiveRemovalTool:
         
         if success:
             messagebox.showinfo("Service Terminated", 
-                              f"✅ BACKGROUND SERVICE COMPLETELY REMOVED\n\n{result_text}")
+                              f"BACKGROUND SERVICE COMPLETELY REMOVED\n\n{result_text}")
         else:
             messagebox.showwarning("Partial Removal", 
-                                 f"⚠️ SOME SERVICE COMPONENTS MAY REMAIN\n\n{result_text}")
+                                 f"SOME SERVICE COMPONENTS MAY REMAIN\n\n{result_text}")
         
         root.destroy()
 

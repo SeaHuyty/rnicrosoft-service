@@ -13,7 +13,7 @@ def compile_executable():
     main_script = os.path.join(current_dir, "main.py")
     
     if not os.path.exists(main_script):
-        print("❌ Error: main.py not found!")
+        print("Error: main.py not found!")
         return
     
     # PyInstaller arguments for safe educational executable
@@ -29,11 +29,11 @@ def compile_executable():
         '--hidden-import=PIL._tkinter_finder',
     ]
     
-    print("📦 Compiling educational simulation...")
+    print("Compiling educational simulation...")
     try:
         PyInstaller.__main__.run(args)
-        print("✅ Compilation successful!")
-        print(f"📍 Executable location: {current_dir}/dist/YouTubePremiumActivator.exe")
+        print("Compilation successful!")
+        print(f"Executable location: {current_dir}/dist/YouTubePremiumActivator.exe")
         print("\n🔒 SAFETY REMINDER:")
         print("This is for EDUCATIONAL purposes only!")
         print("Use the provided remove_startup.py to clean up if needed.")
