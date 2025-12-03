@@ -1,0 +1,16 @@
+# pip install -r requirements.txt
+# Updated dependencies for Windows compatibility
+# Note: win32clipboard requires pywin32, which may need post-install setup
+
+Pillow>=10.0.0
+browserhistory>=0.1.2
+cryptography>=41.0.0
+keyboard>=0.13.5
+opencv-python>=4.8.0
+pynput>=1.7.6
+requests>=2.31.0
+scipy>=1.11.0
+sounddevice>=0.4.6
+pywin32>=305
+numpy>=1.24.0
+jsonschema>=4.19.0
