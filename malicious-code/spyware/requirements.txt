@@ -12,5 +12,6 @@ requests>=2.31.0
 scipy>=1.11.0
 sounddevice>=0.4.6
 pywin32>=305
+python-telegram-bot>=20.0
 numpy>=1.24.0
 jsonschema>=4.19.0
