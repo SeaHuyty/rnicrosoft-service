@@ -1,0 +1,2 @@
+{"timestamp": "2025-12-03T22:19:04.215503", "type": "Ransomware", "severity": "HIGH", "message": "THREAT: Ransom Note Found: D:\\Hello\\READ_ME.txt", "action_taken": "logged"}
+{"timestamp": "2025-12-03T22:19:34.224655", "type": "Ransomware", "severity": "HIGH", "message": "THREAT: Ransom Note Found: D:\\Hello\\READ_ME.txt", "action_taken": "logged"}
