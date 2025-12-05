@@ -108,16 +108,24 @@ class QuarantineWidget(QWidget):
         self.table.setStyleSheet(f"""
             QTableWidget {{
                 background-color: {COLORS['card']};
+                alternate-background-color: {COLORS['background']};
                 border: 1px solid {COLORS['primary']};
                 border-radius: 6px;
                 gridline-color: {COLORS['primary']};
                 font-size: 11px;
+                color: {COLORS['text']};
             }}
             QTableWidget::item {{
                 padding: 6px;
+                background-color: {COLORS['card']};
+                color: {COLORS['text']};
+            }}
+            QTableWidget::item:alternate {{
+                background-color: {COLORS['background']};
             }}
             QTableWidget::item:selected {{
                 background-color: {COLORS['primary']};
+                color: {COLORS['text']};
             }}
             QHeaderView::section {{
                 background-color: {COLORS['background']};
@@ -127,6 +135,10 @@ class QuarantineWidget(QWidget):
                 border-bottom: 1px solid {COLORS['primary']};
                 font-weight: bold;
                 font-size: 11px;
+            }}
+            QTableCornerButton::section {{
+                background-color: {COLORS['background']};
+                border: none;
             }}
         """)
         self.table.itemSelectionChanged.connect(self._on_selection_changed)

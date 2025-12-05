@@ -32,6 +32,8 @@ from guardian_av.ui.dashboard import DashboardWidget
 from guardian_av.ui.settings import SettingsWidget
 from guardian_av.ui.alerts import AlertsWidget
 from guardian_av.ui.quarantine import QuarantineWidget
+from guardian_av.ui.backup_restore import BackupRestoreWidget
+from guardian_av.ui.emergency_tools import EmergencyToolsWidget
 
 
 class SignalBridge(QObject):
@@ -159,6 +161,14 @@ class MainWindow(QMainWindow):
         # Quarantine tab
         self.quarantine = QuarantineWidget(self.config, self.engine)
         self.tabs.addTab(self.quarantine, "🔒 Quarantine")
+        
+        # Backup & Restore tab
+        self.backup_restore = BackupRestoreWidget(self.config, self.engine)
+        self.tabs.addTab(self.backup_restore, "💾 Restore")
+        
+        # Emergency Tools tab
+        self.emergency_tools = EmergencyToolsWidget(self.config, self.engine)
+        self.tabs.addTab(self.emergency_tools, "🚨 Emergency")
         
         layout.addWidget(self.tabs)
         

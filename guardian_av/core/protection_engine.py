@@ -29,6 +29,11 @@ class ThreatType(Enum):
     SUSPICIOUS_PROCESS = "suspicious_process"
     MALICIOUS_FILE = "malicious_file"
     AUTORUN = "autorun"
+    REGISTRY_PERSISTENCE = "registry_persistence"
+    SCREEN_LOCKER = "screen_locker"
+    KEYLOGGER = "keylogger"
+    DATA_EXFILTRATION = "data_exfiltration"
+    CHROME_STEALER = "chrome_stealer"
 
 
 class ThreatSeverity(Enum):
@@ -98,16 +103,61 @@ class ProtectionEngine:
     RANSOMWARE_EXTENSIONS = {'.enc', '.locked', '.crypted', '.encrypted', '.ransom', '.wcry', '.crypto'}
     RANSOM_NOTE_KEYWORDS = {'ransom', 'decrypt', 'recover', 'bitcoin', 'pay', 'readme', 'your_files'}
     
-    # Suspicious process patterns
+    # Suspicious process patterns - detect specific malware files
     MALICIOUS_SIGNATURES = {
-        'longchhunhour', 'encrypt.py', 'worm.py', 'spyware.py', 
-        'ransomware', 'cryptography.hazmat', 'aesgcm', 'keylogger'
+        'longchhunhour.py',  # Ransomware + worm
+        'execute_ransomware',
+        'spread_via_usb', 
+        'spread_via_network',
+        'spyware.py',  # Spyware main file
+        'encrypt.py',  # Encryption component
+        'worm.py',  # Worm component
     }
     
-    # Suspicious commands in process arguments
+    # Suspicious commands - detect malicious operations
     MALICIOUS_COMMANDS = {
-        'encrypt', 'aesgcm', 'ransom', '.enc', 'autorun.inf',
-        'spread_via', 'execute_ransomware', 'pynput', 'keylog'
+        'execute_ransomware',
+        'spread_via',
+        'encrypt_file_with_ransom',
+        'create_ransom_note',
+        'send_telegram_message',  # Data exfiltration
+        'send_telegram_file',  # Data exfiltration
+        'get_chrome_passwords',  # Chrome stealing
+        'get_master_key',  # Chrome decryption
+        'decrypt_password',  # Password theft
+        'quick_keylogger',  # Keylogger function
+        'imagegrab.grab',  # Screenshot capture
+        'cv2.videocapture',  # Webcam capture
+    }
+    
+    # Spyware indicators - specific to detected spyware
+    SPYWARE_INDICATORS = {
+        'pynput.keyboard',  # Keylogger library
+        'listener(on_press',  # Keylogger pattern
+        'imagegrab',  # Screenshot
+        'cv2.videocapture',  # Webcam
+        'win32crypt',  # Password decryption
+        'browserhistory',  # Browser history theft
+        'telegram.ext',  # Telegram bot exfiltration
+        'api.telegram.org',  # Telegram API
+        'chrome_passwords',  # Chrome password theft
+        'login data',  # Chrome login database
+    }
+    
+    # Registry keys used for persistence (by YouTube Premium ransomware)
+    MALICIOUS_REGISTRY_VALUES = {
+        'windowssystemupdate',  # The fake YouTube Premium ransomware
+        'windowsupdate.vbs',
+        'systemupdate.bat',
+        'systemupdate.vbs',
+    }
+    
+    # Suspicious script patterns in AppData
+    SUSPICIOUS_SCRIPTS = {
+        'windowsupdate.vbs',
+        'windowsupdate.bat', 
+        'systemupdate.vbs',
+        'systemupdate.bat',
     }
     
     # Worm-related names
@@ -116,14 +166,17 @@ class ProtectionEngine:
         'system_service.exe', 'update_service.exe', 'system_update.exe'
     }
     
-    # Safe processes (whitelist)
+    # Safe processes (whitelist) - expanded to reduce false positives
     WHITELISTED_PROCESSES = {
         'system', 'svchost.exe', 'csrss.exe', 'dwm.exe', 'explorer.exe',
         'taskhostw.exe', 'runtimebroker.exe', 'applicationframehost.exe',
         'code.exe', 'python.exe', 'pythonw.exe', 'powershell.exe',
         'cmd.exe', 'conhost.exe', 'msedge.exe', 'chrome.exe', 'firefox.exe',
         'windowsterminal.exe', 'searchhost.exe', 'shellexperiencehost.exe',
-        'guardian_av.exe', 'main.py'  # Our own process
+        'guardian_av.exe', 'main.py', 'pip.exe', 'git.exe', 'node.exe',
+        'npm.exe', 'vscode.exe', 'windowsapps', 'microsoft', 'defender',
+        'antimalware', 'securityhealth', 'smartscreen', 'msbuild.exe',
+        'devenv.exe', 'notepad.exe', 'notepad++.exe', 'sublime_text.exe'
     }
     
     def __init__(self, config_manager):
@@ -153,6 +206,8 @@ class ProtectionEngine:
         self._file_processor_thread: Optional[threading.Thread] = None
         self._usb_monitor_thread: Optional[threading.Thread] = None
         self._spyware_monitor_thread: Optional[threading.Thread] = None
+        self._registry_monitor_thread: Optional[threading.Thread] = None
+        self._script_monitor_thread: Optional[threading.Thread] = None
         
         # Statistics
         self.stats = {
@@ -160,7 +215,14 @@ class ProtectionEngine:
             "threats_blocked": 0,
             "files_scanned": 0,
             "processes_scanned": 0,
+            "registry_threats_blocked": 0,
+            "spyware_blocked": 0,
         }
+        
+        # Load saved stats from config
+        saved_stats = self.config.get_stats()
+        if saved_stats:
+            self.stats.update(saved_stats)
         
         # Ensure directories exist
         Path(self.config.backup_directory).mkdir(parents=True, exist_ok=True)
@@ -210,6 +272,22 @@ class ProtectionEngine:
             daemon=True
         )
         self._spyware_monitor_thread.start()
+        
+        # Start registry monitor thread (detects persistence mechanisms)
+        self._registry_monitor_thread = threading.Thread(
+            target=self._registry_monitor_loop,
+            name="RegistryMonitor",
+            daemon=True
+        )
+        self._registry_monitor_thread.start()
+        
+        # Start script monitor thread (detects malicious VBS/BAT in AppData)
+        self._script_monitor_thread = threading.Thread(
+            target=self._script_monitor_loop,
+            name="ScriptMonitor",
+            daemon=True
+        )
+        self._script_monitor_thread.start()
         
         self._notify_status("Protection active")
     
@@ -312,18 +390,27 @@ class ProtectionEngine:
             self._handle_ransomware_file(filepath, threat)
             return
         
-        # Check for ransom notes
-        if filename.endswith('.txt'):
-            if any(kw in filename for kw in self.RANSOM_NOTE_KEYWORDS):
-                threat = ThreatInfo(
-                    threat_type=ThreatType.RANSOMWARE,
-                    severity=ThreatSeverity.HIGH,
-                    description=f"Ransom note detected: {filename}",
-                    file_path=filepath,
-                    action_taken="quarantined"
-                )
-                self._quarantine_file(filepath, threat)
-                return
+        # Check for ransom notes - must be exact match for READ_ME.txt
+        # or contain multiple ransom keywords to avoid false positives
+        if filename == 'read_me.txt' or filename == 'readme_ransom.txt':
+            try:
+                with open(filepath, 'r', errors='ignore') as f:
+                    content = f.read().lower()
+                # Only flag if content looks like a ransom note
+                ransom_indicators = ['bitcoin', 'decrypt', 'pay', 'ransom', 'encrypted', 'wallet']
+                matches = sum(1 for kw in ransom_indicators if kw in content)
+                if matches >= 2:  # Need at least 2 indicators
+                    threat = ThreatInfo(
+                        threat_type=ThreatType.RANSOMWARE,
+                        severity=ThreatSeverity.HIGH,
+                        description=f"Ransom note detected: {filename}",
+                        file_path=filepath,
+                        action_taken="quarantined"
+                    )
+                    self._quarantine_file(filepath, threat)
+                    return
+            except:
+                pass
     
     def _handle_ransomware_file(self, filepath: str, threat: ThreatInfo):
         """Handle a detected ransomware encrypted file"""
@@ -475,16 +562,9 @@ class ProtectionEngine:
                                 reason = f"Malicious command: {cmd}"
                                 break
                     
-                    # Check for access to protected folders
-                    if not is_malicious:
-                        for protected_dir in self.config.protected_directories:
-                            dir_lower = protected_dir.lower().replace('\\', '/')
-                            if dir_lower in cmdline_str.replace('\\', '/'):
-                                # Skip if it's our antivirus
-                                if 'main_defender' not in cmdline_str and 'guardian' not in cmdline_str:
-                                    is_malicious = True
-                                    reason = f"Unauthorized access to {protected_dir}"
-                                    break
+                    # NOTE: Removed "access to protected folders" check
+                    # It was causing too many false positives. 
+                    # We rely on file monitoring instead.
                     
                     if is_malicious:
                         try:
@@ -578,16 +658,25 @@ class ProtectionEngine:
                 pass
     
     def _spyware_monitor_loop(self):
-        """Monitor for spyware activity"""
-        spyware_indicators = [
-            'pynput', 'keyboard', 'keylogger', 'keystroke',
-            'screenshot', 'imagegrab', 'screencapture',
-            'webcam', 'camera', 'videocapture',
-            'microphone', 'sounddevice', 'audiorecord'
+        """Monitor for spyware activity - enhanced detection for keyloggers, screen capture, data theft"""
+        # Spyware scripts to detect
+        spyware_scripts = [
+            'spyware.py',  # Main spyware file
+            'keylogger.py',
+            'screengrab.py',
+        ]
+        
+        # Spyware file indicators (log files created by spyware)
+        spyware_log_patterns = [
+            'key_logs', 'keylogger', 'keystroke',
+            'screenshot', 'webcam', 'camera_capture',
+            'chrome_passwords', 'decrypted_passwords',
+            'browser_history', 'wifi_password',
         ]
         
         while self.running:
             try:
+                # 1. Check for spyware processes
                 for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
                     try:
                         info = proc.info
@@ -603,35 +692,81 @@ class ProtectionEngine:
                         cmdline = info.get('cmdline', [])
                         cmdline_str = ' '.join(cmdline).lower() if cmdline else ''
                         
-                        for indicator in spyware_indicators:
-                            if indicator in cmdline_str:
-                                # Additional check for listener/capture patterns
-                                if any(kw in cmdline_str for kw in ['listener', 'on_press', 'capture', 'record', 'grab']):
-                                    try:
-                                        process = psutil.Process(pid)
-                                        process.kill()
-                                        self.blocked_pids.add(pid)
-                                        
-                                        threat = ThreatInfo(
-                                            threat_type=ThreatType.SPYWARE,
-                                            severity=ThreatSeverity.CRITICAL,
-                                            description=f"Spyware detected: {indicator}",
-                                            process_name=name,
-                                            process_id=pid,
-                                            action_taken="terminated"
-                                        )
-                                        self._notify_threat(threat)
-                                        self.stats["threats_blocked"] += 1
-                                    except:
-                                        pass
+                        detected = False
+                        threat_type = ThreatType.SPYWARE
+                        description = ""
+                        
+                        # Check for spyware scripts
+                        for script in spyware_scripts:
+                            if script in cmdline_str:
+                                detected = True
+                                description = f"Spyware script: {script}"
                                 break
+                        
+                        # Check for spyware indicators in command line
+                        if not detected:
+                            for indicator in self.SPYWARE_INDICATORS:
+                                if indicator in cmdline_str:
+                                    detected = True
+                                    # Categorize threat type
+                                    if 'pynput' in indicator or 'keyboard' in indicator:
+                                        threat_type = ThreatType.KEYLOGGER
+                                        description = f"Keylogger detected: {indicator}"
+                                    elif 'telegram' in indicator:
+                                        threat_type = ThreatType.DATA_EXFILTRATION
+                                        description = f"Data exfiltration: {indicator}"
+                                    elif 'chrome' in indicator or 'password' in indicator:
+                                        threat_type = ThreatType.CHROME_STEALER
+                                        description = f"Password stealer: {indicator}"
+                                    else:
+                                        description = f"Spyware activity: {indicator}"
+                                    break
+                        
+                        if detected:
+                            try:
+                                process = psutil.Process(pid)
+                                process.kill()
+                                self.blocked_pids.add(pid)
+                                
+                                threat = ThreatInfo(
+                                    threat_type=threat_type,
+                                    severity=ThreatSeverity.CRITICAL,
+                                    description=description,
+                                    process_name=name,
+                                    process_id=pid,
+                                    action_taken="terminated"
+                                )
+                                self._notify_threat(threat)
+                                self.stats["spyware_blocked"] += 1
+                                self.stats["threats_blocked"] += 1
+                            except:
+                                pass
                     
                     except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                         continue
+                        
+                # 2. Check for spyware log files in temp
+                temp_path = os.getenv('TEMP', '')
+                if os.path.exists(temp_path):
+                    try:
+                        for item in os.listdir(temp_path):
+                            item_lower = item.lower()
+                            for pattern in spyware_log_patterns:
+                                if pattern in item_lower:
+                                    item_path = os.path.join(temp_path, item)
+                                    if os.path.isfile(item_path):
+                                        try:
+                                            os.remove(item_path)
+                                        except:
+                                            pass
+                                    break
+                    except:
+                        pass
+                        
             except Exception as e:
                 pass
             
-            time.sleep(30)  # Check every 30 seconds
+            time.sleep(15)  # Check every 15 seconds
     
     def run_manual_scan(self, callback: Optional[Callable[[str, int], None]] = None):
         """Run a manual scan of all protected directories"""
@@ -654,13 +789,14 @@ class ProtectionEngine:
                     filepath = os.path.join(root, file)
                     filename = file.lower()
                     scanned += 1
+                    self.stats["files_scanned"] += 1
                     
                     # Report progress
                     if callback:
                         progress = int((scanned / max(total_files, 1)) * 100)
                         callback(filepath, progress)
                     
-                    # Check for ransomware
+                    # Check for ransomware encrypted files
                     _, ext = os.path.splitext(filename)
                     if ext in self.RANSOMWARE_EXTENSIONS:
                         threat = ThreatInfo(
@@ -668,10 +804,10 @@ class ProtectionEngine:
                             severity=ThreatSeverity.CRITICAL,
                             description=f"Encrypted file: {filename}",
                             file_path=filepath,
-                            action_taken="quarantined"
+                            action_taken="detected"
                         )
-                        self._quarantine_file(filepath, threat)
                         threats_found.append(threat)
+                        self._notify_threat(threat)
                     
                     # Check for ransom notes
                     elif filename.endswith('.txt'):
@@ -681,10 +817,56 @@ class ProtectionEngine:
                                 severity=ThreatSeverity.HIGH,
                                 description=f"Ransom note: {filename}",
                                 file_path=filepath,
-                                action_taken="quarantined"
+                                action_taken="detected"
                             )
-                            self._quarantine_file(filepath, threat)
                             threats_found.append(threat)
+                            self._notify_threat(threat)
+                    
+                    # Check Python files for malware patterns
+                    elif filename.endswith('.py'):
+                        try:
+                            with open(filepath, 'r', errors='ignore') as f:
+                                content = f.read().lower()
+                            
+                            # Check for spyware indicators
+                            for indicator in self.SPYWARE_INDICATORS:
+                                if indicator.lower() in content:
+                                    threat_type = ThreatType.SPYWARE
+                                    if 'keyboard' in indicator or 'keylog' in indicator:
+                                        threat_type = ThreatType.KEYLOGGER
+                                    elif 'telegram' in indicator or 'bot_token' in indicator:
+                                        threat_type = ThreatType.DATA_EXFILTRATION
+                                    elif 'chrome' in indicator or 'login' in indicator:
+                                        threat_type = ThreatType.CHROME_STEALER
+                                    
+                                    threat = ThreatInfo(
+                                        threat_type=threat_type,
+                                        severity=ThreatSeverity.HIGH,
+                                        description=f"Malware pattern '{indicator}' in {filename}",
+                                        file_path=filepath,
+                                        action_taken="detected"
+                                    )
+                                    threats_found.append(threat)
+                                    self.stats["threats_detected"] += 1
+                                    self._notify_threat(threat)
+                                    break  # One alert per file
+                            
+                            # Check for ransomware patterns
+                            for reg_value in self.MALICIOUS_REGISTRY_VALUES:
+                                if reg_value.lower() in content:
+                                    threat = ThreatInfo(
+                                        threat_type=ThreatType.RANSOMWARE,
+                                        severity=ThreatSeverity.CRITICAL,
+                                        description=f"Ransomware pattern '{reg_value}' in {filename}",
+                                        file_path=filepath,
+                                        action_taken="detected"
+                                    )
+                                    threats_found.append(threat)
+                                    self.stats["threats_detected"] += 1
+                                    self._notify_threat(threat)
+                                    break
+                        except:
+                            pass
                     
                     # Small delay to prevent high CPU usage
                     time.sleep(0.01)
@@ -692,8 +874,8 @@ class ProtectionEngine:
         self.config.update_last_scan()
         return threats_found
     
-    def restore_from_backup(self):
-        """Restore all files from backup"""
+    def restore_from_backup(self, target_directory: str = None):
+        """Restore all files from backup to their original locations"""
         restored = []
         
         if not os.path.exists(self.config.backup_directory):
@@ -705,21 +887,59 @@ class ProtectionEngine:
                 try:
                     rel_path = os.path.relpath(backup_path, self.config.backup_directory)
                     
-                    # Try to restore to each protected directory
-                    for protected_dir in self.config.protected_directories:
-                        original_path = os.path.join(protected_dir, rel_path)
-                        
-                        # Create directory if needed
-                        os.makedirs(os.path.dirname(original_path), exist_ok=True)
-                        
-                        # Restore file
-                        shutil.copy2(backup_path, original_path)
-                        restored.append(original_path)
-                        break
+                    if target_directory:
+                        # Restore to specific directory
+                        original_path = os.path.join(target_directory, file)
+                    else:
+                        # Try to restore to each protected directory
+                        for protected_dir in self.config.protected_directories:
+                            original_path = os.path.join(protected_dir, rel_path)
+                            break
+                    
+                    # Create directory if needed
+                    os.makedirs(os.path.dirname(original_path), exist_ok=True)
+                    
+                    # Restore file
+                    shutil.copy2(backup_path, original_path)
+                    restored.append(original_path)
                 except:
                     pass
         
         return restored
+    
+    def get_backup_files(self) -> List[Dict]:
+        """Get list of backed up files"""
+        backups = []
+        
+        if not os.path.exists(self.config.backup_directory):
+            return backups
+        
+        for root, dirs, files in os.walk(self.config.backup_directory):
+            for file in files:
+                backup_path = os.path.join(root, file)
+                try:
+                    stat = os.stat(backup_path)
+                    backups.append({
+                        'filename': file,
+                        'path': backup_path,
+                        'size': stat.st_size,
+                        'modified': stat.st_mtime
+                    })
+                except:
+                    pass
+        
+        return backups
+    
+    def restore_single_backup(self, backup_path: str, target_path: str) -> bool:
+        """Restore a single file from backup"""
+        try:
+            if os.path.exists(backup_path):
+                os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                shutil.copy2(backup_path, target_path)
+                return True
+        except:
+            pass
+        return False
     
     def get_quarantine_items(self) -> List[Dict]:
         """Get list of quarantined items"""
@@ -777,4 +997,403 @@ class ProtectionEngine:
             **self.stats,
             "protected_directories": len(self.config.protected_directories),
             "protection_active": self.protection_enabled
+        }
+    
+    # ==================== REGISTRY MONITORING ====================
+    
+    def _registry_monitor_loop(self):
+        """Monitor Windows registry for malicious persistence entries"""
+        import winreg
+        
+        registry_locations = [
+            (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run"),
+            (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\RunOnce"),
+        ]
+        
+        while self.running:
+            try:
+                for hkey, subkey in registry_locations:
+                    try:
+                        with winreg.OpenKey(hkey, subkey, 0, winreg.KEY_READ) as key:
+                            i = 0
+                            while True:
+                                try:
+                                    name, value, _ = winreg.EnumValue(key, i)
+                                    name_lower = name.lower()
+                                    value_lower = value.lower() if isinstance(value, str) else ""
+                                    
+                                    # Check for known malicious registry entries
+                                    for mal_value in self.MALICIOUS_REGISTRY_VALUES:
+                                        if mal_value in name_lower or mal_value in value_lower:
+                                            threat = ThreatInfo(
+                                                threat_type=ThreatType.REGISTRY_PERSISTENCE,
+                                                severity=ThreatSeverity.CRITICAL,
+                                                description=f"Malicious startup entry: {name}",
+                                                file_path=value if isinstance(value, str) else None,
+                                                action_taken="detected"
+                                            )
+                                            self._notify_threat(threat)
+                                            self.stats["registry_threats_blocked"] += 1
+                                            # Attempt to remove
+                                            self._remove_registry_entry(hkey, subkey, name)
+                                            break
+                                    
+                                    i += 1
+                                except OSError:
+                                    break
+                    except WindowsError:
+                        pass
+            except Exception as e:
+                pass
+            
+            time.sleep(10)  # Check every 10 seconds
+    
+    def _remove_registry_entry(self, hkey, subkey: str, value_name: str) -> bool:
+        """Remove a malicious registry entry"""
+        import winreg
+        try:
+            with winreg.OpenKey(hkey, subkey, 0, winreg.KEY_SET_VALUE) as key:
+                winreg.DeleteValue(key, value_name)
+                return True
+        except:
+            return False
+    
+    # ==================== SCRIPT MONITORING ====================
+    
+    def _script_monitor_loop(self):
+        """Monitor for malicious VBS/BAT scripts in AppData"""
+        appdata_locations = [
+            os.path.join(os.getenv('APPDATA', ''), 'Microsoft'),
+            os.path.join(os.getenv('APPDATA', ''), 'Microsoft', 'Windows'),
+            os.getenv('TEMP', ''),
+        ]
+        
+        while self.running:
+            try:
+                for location in appdata_locations:
+                    if not os.path.exists(location):
+                        continue
+                    
+                    try:
+                        for item in os.listdir(location):
+                            item_lower = item.lower()
+                            item_path = os.path.join(location, item)
+                            
+                            # Check for suspicious script files
+                            for script in self.SUSPICIOUS_SCRIPTS:
+                                if script in item_lower:
+                                    threat = ThreatInfo(
+                                        threat_type=ThreatType.MALICIOUS_FILE,
+                                        severity=ThreatSeverity.HIGH,
+                                        description=f"Malicious script detected: {item}",
+                                        file_path=item_path,
+                                        action_taken="quarantined"
+                                    )
+                                    self._quarantine_file(item_path, threat)
+                                    break
+                    except PermissionError:
+                        pass
+            except Exception as e:
+                pass
+            
+            time.sleep(15)  # Check every 15 seconds
+    
+    # ==================== ENHANCED SPYWARE DETECTION ====================
+    
+    def detect_spyware_processes(self) -> List[ThreatInfo]:
+        """Detect and terminate spyware processes (keyloggers, screen capture, etc.)"""
+        threats = []
+        
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    info = proc.info
+                    name = info.get('name', '').lower()
+                    pid = info.get('pid')
+                    
+                    if pid in self.blocked_pids:
+                        continue
+                    
+                    if name in self.WHITELISTED_PROCESSES:
+                        continue
+                    
+                    cmdline = info.get('cmdline', [])
+                    cmdline_str = ' '.join(cmdline).lower() if cmdline else ''
+                    
+                    # Check for spyware indicators
+                    detected_indicator = None
+                    threat_type = ThreatType.SPYWARE
+                    
+                    for indicator in self.SPYWARE_INDICATORS:
+                        if indicator in cmdline_str:
+                            detected_indicator = indicator
+                            
+                            # Categorize the threat
+                            if 'pynput' in indicator or 'keylog' in indicator or 'listener' in indicator:
+                                threat_type = ThreatType.KEYLOGGER
+                            elif 'telegram' in indicator or 'api.telegram' in indicator:
+                                threat_type = ThreatType.DATA_EXFILTRATION
+                            elif 'chrome' in indicator or 'password' in indicator or 'win32crypt' in indicator:
+                                threat_type = ThreatType.CHROME_STEALER
+                            elif 'imagegrab' in indicator or 'videocapture' in indicator:
+                                threat_type = ThreatType.SPYWARE
+                            
+                            break
+                    
+                    # Also check for specific spyware files
+                    if not detected_indicator:
+                        if 'spyware.py' in cmdline_str:
+                            detected_indicator = 'spyware.py'
+                    
+                    if detected_indicator:
+                        try:
+                            process = psutil.Process(pid)
+                            process.kill()
+                            self.blocked_pids.add(pid)
+                            
+                            threat = ThreatInfo(
+                                threat_type=threat_type,
+                                severity=ThreatSeverity.CRITICAL,
+                                description=f"Spyware detected: {detected_indicator}",
+                                process_name=name,
+                                process_id=pid,
+                                action_taken="terminated"
+                            )
+                            threats.append(threat)
+                            self._notify_threat(threat)
+                            self.stats["spyware_blocked"] += 1
+                        except:
+                            pass
+                
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    continue
+        except Exception as e:
+            pass
+        
+        return threats
+    
+    # ==================== EMERGENCY REMOVAL TOOLS ====================
+    
+    def emergency_remove_all_threats(self) -> Dict:
+        """Emergency removal of all known malware persistence mechanisms"""
+        results = {
+            "registry_removed": [],
+            "scripts_removed": [],
+            "processes_killed": [],
+            "files_quarantined": [],
+            "errors": []
+        }
+        
+        # 1. Remove registry entries
+        import winreg
+        registry_locations = [
+            (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run"),
+            (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\RunOnce"),
+        ]
+        
+        for hkey, subkey in registry_locations:
+            try:
+                with winreg.OpenKey(hkey, subkey, 0, winreg.KEY_ALL_ACCESS) as key:
+                    # Get all values first
+                    values_to_remove = []
+                    i = 0
+                    while True:
+                        try:
+                            name, value, _ = winreg.EnumValue(key, i)
+                            name_lower = name.lower()
+                            value_lower = value.lower() if isinstance(value, str) else ""
+                            
+                            for mal_value in self.MALICIOUS_REGISTRY_VALUES:
+                                if mal_value in name_lower or mal_value in value_lower:
+                                    values_to_remove.append(name)
+                                    break
+                            i += 1
+                        except OSError:
+                            break
+                    
+                    # Remove malicious values
+                    for name in values_to_remove:
+                        try:
+                            winreg.DeleteValue(key, name)
+                            results["registry_removed"].append(f"{subkey}\\{name}")
+                        except Exception as e:
+                            results["errors"].append(f"Failed to remove registry {name}: {e}")
+            except Exception as e:
+                pass
+        
+        # 2. Kill malicious processes (pythonw.exe running malware)
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    info = proc.info
+                    name = info.get('name', '').lower()
+                    pid = info.get('pid')
+                    cmdline = info.get('cmdline', [])
+                    cmdline_str = ' '.join(cmdline).lower() if cmdline else ''
+                    
+                    # Kill pythonw.exe processes that might be the ransomware service
+                    if 'pythonw' in name:
+                        # Check if it's running any known malicious scripts
+                        suspicious_scripts = ['premium', 'youtube', 'systemupdate', 'windowsupdate', 'spyware', 'ransomware']
+                        for script in suspicious_scripts:
+                            if script in cmdline_str:
+                                try:
+                                    process = psutil.Process(pid)
+                                    process.kill()
+                                    results["processes_killed"].append(f"{name} (PID: {pid})")
+                                except:
+                                    pass
+                                break
+                except:
+                    continue
+        except Exception as e:
+            results["errors"].append(f"Process scan error: {e}")
+        
+        # 3. Remove malicious scripts from AppData
+        script_locations = [
+            os.path.join(os.getenv('APPDATA', ''), 'Microsoft'),
+            os.path.join(os.getenv('APPDATA', ''), 'Microsoft', 'Windows'),
+        ]
+        
+        for location in script_locations:
+            if not os.path.exists(location):
+                continue
+            
+            try:
+                for item in os.listdir(location):
+                    item_lower = item.lower()
+                    item_path = os.path.join(location, item)
+                    
+                    for script in self.SUSPICIOUS_SCRIPTS:
+                        if script in item_lower:
+                            try:
+                                os.remove(item_path)
+                                results["scripts_removed"].append(item_path)
+                            except Exception as e:
+                                results["errors"].append(f"Failed to remove {item_path}: {e}")
+                            break
+            except:
+                pass
+        
+        # 4. Also check temp folder for log files from spyware
+        temp_path = os.getenv('TEMP', '')
+        spyware_logs = ['key_logs', 'keylogger', 'screenshot', 'webcam', 'chrome_passwords', 'system_info']
+        
+        if os.path.exists(temp_path):
+            try:
+                for root, dirs, files in os.walk(temp_path):
+                    for file in files:
+                        file_lower = file.lower()
+                        for log in spyware_logs:
+                            if log in file_lower:
+                                file_path = os.path.join(root, file)
+                                try:
+                                    os.remove(file_path)
+                                    results["files_quarantined"].append(file_path)
+                                except:
+                                    pass
+                                break
+                    # Don't go too deep
+                    if root.count(os.sep) - temp_path.count(os.sep) > 2:
+                        break
+            except:
+                pass
+        
+        return results
+    
+    def check_for_screen_locker(self) -> bool:
+        """Check if a ransomware screen locker is active"""
+        try:
+            import ctypes
+            from ctypes import wintypes
+            
+            user32 = ctypes.windll.user32
+            
+            # Get foreground window
+            hwnd = user32.GetForegroundWindow()
+            
+            # Get window title
+            length = user32.GetWindowTextLengthW(hwnd)
+            buff = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buff, length + 1)
+            title = buff.value.lower()
+            
+            # Check for ransomware indicators in window title
+            ransomware_indicators = [
+                'enterprise security',
+                'ransomware',
+                'files encrypted',
+                'bitcoin',
+                'decrypt',
+                'security breach',
+                'ransom',
+                'pay',
+            ]
+            
+            for indicator in ransomware_indicators:
+                if indicator in title:
+                    return True
+            
+            # Check if window is fullscreen and topmost
+            rect = wintypes.RECT()
+            user32.GetWindowRect(hwnd, ctypes.byref(rect))
+            
+            screen_width = user32.GetSystemMetrics(0)
+            screen_height = user32.GetSystemMetrics(1)
+            
+            is_fullscreen = (
+                rect.right - rect.left >= screen_width - 10 and 
+                rect.bottom - rect.top >= screen_height - 10
+            )
+            
+            # If fullscreen and has suspicious title keywords
+            if is_fullscreen and any(kw in title for kw in ['security', 'alert', 'warning', 'locked']):
+                return True
+                
+        except Exception as e:
+            pass
+        
+        return False
+    
+    def kill_screen_locker(self) -> bool:
+        """Attempt to kill ransomware screen locker windows"""
+        try:
+            import subprocess
+            
+            # Kill common ransomware process names
+            processes_to_kill = ['pythonw.exe', 'wscript.exe']
+            
+            for proc_name in processes_to_kill:
+                try:
+                    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                        info = proc.info
+                        name = info.get('name', '').lower()
+                        cmdline = info.get('cmdline', [])
+                        cmdline_str = ' '.join(cmdline).lower() if cmdline else ''
+                        
+                        if proc_name in name:
+                            # Check if it's running known ransomware
+                            if any(kw in cmdline_str for kw in ['premium', 'ransom', 'encrypt', 'locker', 'youtube']):
+                                try:
+                                    process = psutil.Process(info.get('pid'))
+                                    process.kill()
+                                except:
+                                    pass
+                except:
+                    continue
+            
+            return True
+        except:
+            return False
+    
+    def get_threat_summary(self) -> Dict:
+        """Get a summary of current threat status"""
+        return {
+            "threats_detected": self.stats["threats_detected"],
+            "threats_blocked": self.stats["threats_blocked"],
+            "registry_threats": self.stats["registry_threats_blocked"],
+            "spyware_blocked": self.stats["spyware_blocked"],
+            "files_scanned": self.stats["files_scanned"],
+            "processes_scanned": self.stats["processes_scanned"],
+            "screen_locker_detected": self.check_for_screen_locker(),
         }

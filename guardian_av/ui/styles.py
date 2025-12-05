@@ -69,6 +69,25 @@ QPushButton#warningButton:hover {
     background-color: #ffb732;
 }
 
+QPushButton#successButton {
+    background-color: #27ae60;
+    color: white;
+}
+
+QPushButton#successButton:hover {
+    background-color: #2ecc71;
+}
+
+QPushButton#emergencyButton {
+    background-color: #cc0000;
+    color: white;
+    font-weight: bold;
+}
+
+QPushButton#emergencyButton:hover {
+    background-color: #ff0000;
+}
+
 /* Labels */
 QLabel {
     color: #eaeaea;
@@ -373,6 +392,7 @@ COLORS = {
     'card': '#16213e',
     'primary': '#0f3460',
     'accent': '#00b894',
+    'success': '#00b894',  # Green for success messages
     'danger': '#e74c3c',
     'warning': '#f39c12',
     'info': '#3498db',

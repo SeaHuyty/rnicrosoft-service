@@ -161,10 +161,10 @@ class DashboardWidget(QWidget):
         stats_layout = QGridLayout()
         stats_layout.setSpacing(10)
         
-        self.threats_card = StatCard("Threats Blocked", "0")
+        self.threats_card = StatCard("Threats Detected", "0")
         self.threats_card.set_color(COLORS['danger'])
         
-        self.files_card = StatCard("Files Protected", "0")
+        self.files_card = StatCard("Files Scanned", "0")
         self.files_card.set_color(COLORS['accent'])
         
         self.dirs_card = StatCard("Protected Folders", "0")
@@ -248,7 +248,7 @@ class DashboardWidget(QWidget):
     
     def update_stats(self, stats: dict):
         """Update statistics display"""
-        self.threats_card.set_value(str(stats.get('threats_blocked', 0)))
+        self.threats_card.set_value(str(stats.get('threats_detected', 0)))
         self.files_card.set_value(str(stats.get('files_scanned', 0)))
         self.dirs_card.set_value(str(stats.get('protected_directories', 0)))
         self.scans_card.set_value(str(stats.get('processes_scanned', 0)))

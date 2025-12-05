@@ -234,6 +234,16 @@ class ConfigManager:
         """Get a statistics value"""
         return self.config["statistics"].get(stat_name, 0)
     
+    def get_stats(self) -> Dict:
+        """Get all statistics"""
+        stats = self.config.get("statistics", {})
+        return {
+            "threats_detected": stats.get("threats_detected", 0) or 0,
+            "threats_blocked": stats.get("threats_blocked", 0) or 0,
+            "files_scanned": stats.get("files_quarantined", 0) or 0,
+            "processes_scanned": 0,
+        }
+    
     def update_last_scan(self):
         """Update last full scan timestamp"""
         self.config["statistics"]["last_full_scan"] = datetime.now().isoformat()
