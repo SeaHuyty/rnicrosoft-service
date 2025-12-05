@@ -37,8 +37,9 @@ BASE_LOG_PATH = pathlib.Path(tempfile.gettempdir()) / 'Logs'
 BASE_LOG_PATH.mkdir(parents=True, exist_ok=True)
 
 # Telegram Configuration
-BOT_TOKEN = "6622438559:AAEGqBZnIYwNth3FhtkOSwQEeRMe8nyv660"
-CHAT_ID = "2119992330"
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
 ################ Persistence Functions - MATCHES TECHNIQUE 2 ################
 
