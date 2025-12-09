@@ -1,5 +1,5 @@
 """
-Guardian Antivirus - Detection Test Script
+Someth Antivirus - Detection Test Script
 Tests if the antivirus can detect malware patterns
 """
 
@@ -17,7 +17,7 @@ config = ConfigManager()
 engine = ProtectionEngine(config)
 
 print('=' * 60)
-print('   GUARDIAN ANTIVIRUS - DETECTION TEST')
+print('   SOMETH ANTIVIRUS - DETECTION TEST')
 print('=' * 60)
 
 def test_file(filepath, test_name):
@@ -97,7 +97,7 @@ print(f'   TEST COMPLETE - {total_threats} total threats detected!')
 print('=' * 60)
 
 if total_threats > 0:
-    print('\n✅ Guardian Antivirus is WORKING!')
+    print('\n✅ Someth Antivirus is WORKING!')
     print('   It can detect spyware, ransomware, and worms.')
 else:
     print('\n❌ Detection test failed - no threats found')

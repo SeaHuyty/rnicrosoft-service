@@ -173,7 +173,7 @@ class ProtectionEngine:
         'code.exe', 'python.exe', 'pythonw.exe', 'powershell.exe',
         'cmd.exe', 'conhost.exe', 'msedge.exe', 'chrome.exe', 'firefox.exe',
         'windowsterminal.exe', 'searchhost.exe', 'shellexperiencehost.exe',
-        'guardian_av.exe', 'main.py', 'pip.exe', 'git.exe', 'node.exe',
+        'someth_av.exe', 'main.py', 'pip.exe', 'git.exe', 'node.exe',
         'npm.exe', 'vscode.exe', 'windowsapps', 'microsoft', 'defender',
         'antimalware', 'securityhealth', 'smartscreen', 'msbuild.exe',
         'devenv.exe', 'notepad.exe', 'notepad++.exe', 'sublime_text.exe'

@@ -1,10 +1,10 @@
 ================================================================================
-                        GUARDIAN ANTIVIRUS - README
+                        SOMETH ANTIVIRUS - README
 ================================================================================
 
 WHAT IS THIS?
 -------------
-Guardian Antivirus is a Python-based security tool that protects your computer
+Someth Antivirus is a Python-based security tool that protects your computer
 against spyware, ransomware, and worms. It was specifically designed to detect
 and block the malware created by our team (spyware.py, screen locker, worm).
 
@@ -42,7 +42,7 @@ QUICK TEST (to see detection working):
 Run this command to see threat detection:
    python test_detection.py
 
-This will show Guardian detecting 28 threats in the malware files.
+This will show Someth Antivirus detecting 28 threats in the malware files.
 
 
 DEMO SCRIPTS:

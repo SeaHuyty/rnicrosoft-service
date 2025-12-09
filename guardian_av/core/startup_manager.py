@@ -12,7 +12,7 @@ from pathlib import Path
 class StartupManager:
     """Manages Windows startup integration"""
     
-    APP_NAME = "GuardianAntivirus"
+    APP_NAME = "SomethAntivirus"
     REGISTRY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
     
     def __init__(self):

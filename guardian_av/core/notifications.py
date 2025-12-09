@@ -27,7 +27,7 @@ class NotificationConfig:
 class NotificationManager:
     """Manages Windows toast notifications"""
     
-    APP_NAME = "Guardian Antivirus"
+    APP_NAME = "Someth Antivirus"
     ICON_PATH = None  # Can be set to a custom icon path
     
     def __init__(self, config: Optional[NotificationConfig] = None):

@@ -1,5 +1,5 @@
 """
-Guardian Antivirus - Settings Widget
+Someth Antivirus - Settings Widget
 Settings panel for configuration options
 """
 
@@ -168,7 +168,7 @@ class SettingsWidget(QWidget):
         about_layout = QVBoxLayout(about_group)
         
         about_text = QLabel("""
-Guardian Antivirus v1.0.0
+Someth Antivirus v1.0.0
 
 A professional real-time protection solution featuring:
 • Real-time file system monitoring

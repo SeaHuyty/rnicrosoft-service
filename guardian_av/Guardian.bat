@@ -1,6 +1,6 @@
 @echo off
-REM Guardian Antivirus Launcher
-REM Run this file to start Guardian Antivirus
+REM Someth Antivirus Launcher
+REM Run this file to start Someth Antivirus
 
 cd /d "%~dp0"
 
@@ -20,8 +20,8 @@ if errorlevel 1 (
     pip install -r requirements.txt
 )
 
-REM Run Guardian Antivirus
-echo Starting Guardian Antivirus...
+REM Run Someth Antivirus
+echo Starting Someth Antivirus...
 pythonw main.py %*
 
 exit /b 0
