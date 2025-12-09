@@ -1,5 +1,5 @@
 """
-Guardian Antivirus - Quarantine Widget
+Someth Antivirus - Quarantine Widget
 Manage quarantined files
 """
 

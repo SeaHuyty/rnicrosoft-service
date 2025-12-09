@@ -1,12 +1,12 @@
 """
-Guardian Antivirus - Emergency Tools Widget
+Someth Antivirus - Emergency Tools Widget
 Tools for removing ransomware, spyware, and restoring system
 """
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QTextEdit, QMessageBox, QGroupBox, QGridLayout,
-    QProgressBar
+    QProgressBar, QScrollArea, QSizePolicy
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
@@ -42,7 +42,39 @@ class EmergencyToolsWidget(QWidget):
         self.setup_ui()
     
     def setup_ui(self):
-        layout = QVBoxLayout(self)
+        # Main layout with scroll area
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        
+        # Create scroll area
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background-color: transparent;
+            }
+            QScrollBar:vertical {
+                background-color: #1a1a2e;
+                width: 12px;
+                border-radius: 6px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #00d4aa;
+                border-radius: 6px;
+                min-height: 30px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        """)
+        
+        # Content widget inside scroll area
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(12)
         
@@ -84,6 +116,7 @@ class EmergencyToolsWidget(QWidget):
         warning_text.setWordWrap(True)
         warning_layout.addWidget(warning_text, 1)
         
+        warning_frame.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         layout.addWidget(warning_frame)
         
         # Tools Grid
@@ -173,8 +206,8 @@ class EmergencyToolsWidget(QWidget):
         
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        self.log_text.setMinimumHeight(120)
-        self.log_text.setMaximumHeight(200)
+        self.log_text.setMinimumHeight(80)
+        self.log_text.setMaximumHeight(150)
         self.log_text.setStyleSheet(f"""
             QTextEdit {{
                 background-color: #0a0a0a;
@@ -211,11 +244,15 @@ class EmergencyToolsWidget(QWidget):
         layout.addWidget(status_frame)
         
         layout.addStretch()
+        
+        # Set scroll area content
+        scroll_area.setWidget(content_widget)
+        main_layout.addWidget(scroll_area)
     
     def _create_tool_group(self, title, description, button_text, button_color, callback):
         """Create a tool group box"""
         group = QGroupBox(title)
-        group.setMinimumHeight(180)  # Ensure minimum height
+        group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         group.setStyleSheet(f"""
             QGroupBox {{
                 color: {COLORS['text']};
@@ -224,7 +261,7 @@ class EmergencyToolsWidget(QWidget):
                 border: 2px solid {button_color};
                 border-radius: 8px;
                 margin-top: 12px;
-                padding: 15px;
+                padding: 10px;
                 background-color: rgba(0, 0, 0, 0.2);
             }}
             QGroupBox::title {{
@@ -237,26 +274,25 @@ class EmergencyToolsWidget(QWidget):
         """)
         
         layout = QVBoxLayout(group)
-        layout.setContentsMargins(12, 20, 12, 12)
-        layout.setSpacing(12)
+        layout.setContentsMargins(10, 18, 10, 10)
+        layout.setSpacing(8)
         
         desc_label = QLabel(description)
-        desc_label.setStyleSheet(f"color: {COLORS['text']}; font-size: 11px; font-weight: normal; line-height: 1.4;")
+        desc_label.setStyleSheet(f"color: {COLORS['text']}; font-size: 10px; font-weight: normal;")
         desc_label.setWordWrap(True)
-        desc_label.setMinimumHeight(80)
         layout.addWidget(desc_label)
         
         layout.addStretch()
         
         btn = QPushButton(button_text)
-        btn.setMinimumHeight(40)
+        btn.setMinimumHeight(35)
         btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {button_color};
                 color: white;
                 font-weight: bold;
-                font-size: 12px;
-                padding: 10px 20px;
+                font-size: 11px;
+                padding: 8px 15px;
                 border-radius: 6px;
                 border: none;
             }}

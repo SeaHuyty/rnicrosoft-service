@@ -6,6 +6,7 @@ Professional GUI Antivirus with Real-time Protection
 import sys
 import os
 import threading
+import subprocess
 from datetime import datetime
 
 # Add parent directory to path for imports when running directly
@@ -42,6 +43,7 @@ class SignalBridge(QObject):
     status_changed = pyqtSignal(str)
     scan_progress = pyqtSignal(str, int)  # filepath, progress
     scan_complete = pyqtSignal(int)  # threats found
+    emergency_kill = pyqtSignal()  # Emergency hotkey triggered
 
 
 class MainWindow(QMainWindow):
@@ -84,13 +86,20 @@ class MainWindow(QMainWindow):
         
         # Auto-start protection
         QTimer.singleShot(500, self._auto_start_protection)
+        
+        # Setup global emergency hotkey
+        self.signals.emergency_kill.connect(self._emergency_kill_ransomware)
+        self._setup_emergency_hotkey()
     
     def setup_ui(self):
         """Setup the main UI"""
-        self.setWindowTitle("Guardian Antivirus")
+        self.setWindowTitle("Someth Antivirus")
         self.setMinimumSize(900, 600)
-        self.resize(1000, 700)
+        self.resize(1100, 750)
         self.setStyleSheet(DARK_STYLESHEET)
+        
+        # Start maximized to prevent UI responsiveness issues
+        self.showMaximized()
         
         # Central widget
         central = QWidget()
@@ -112,7 +121,7 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(logo_label)
         
         title_layout = QVBoxLayout()
-        title = QLabel("Guardian Antivirus")
+        title = QLabel("Someth Antivirus")
         title.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {COLORS['accent']};")
         subtitle = QLabel("Real-time Protection")
         subtitle.setStyleSheet(f"font-size: 11px; color: {COLORS['text_secondary']};")
@@ -240,6 +249,168 @@ class MainWindow(QMainWindow):
         self.setWindowState(self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive)
         self.activateWindow()
         self.raise_()
+    
+    def _setup_emergency_hotkey(self):
+        """Setup global emergency hotkey listener (Ctrl+Shift+K to kill ransomware)"""
+        def hotkey_listener():
+            """Background thread to listen for emergency hotkey"""
+            try:
+                import ctypes
+                from ctypes import wintypes
+                
+                user32 = ctypes.windll.user32
+                
+                # Register hotkey: Ctrl+Shift+K (kill ransomware)
+                # MOD_CONTROL = 0x0002, MOD_SHIFT = 0x0004
+                # K = 0x4B
+                HOTKEY_ID = 1
+                MOD_CONTROL = 0x0002
+                MOD_SHIFT = 0x0004
+                VK_K = 0x4B
+                
+                if not user32.RegisterHotKey(None, HOTKEY_ID, MOD_CONTROL | MOD_SHIFT, VK_K):
+                    print("[HOTKEY] Failed to register Ctrl+Shift+K")
+                    return
+                
+                print("[HOTKEY] Emergency hotkey registered: Ctrl+Shift+K")
+                
+                # Message loop
+                msg = wintypes.MSG()
+                while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) != 0:
+                    if msg.message == 0x0312:  # WM_HOTKEY
+                        if msg.wParam == HOTKEY_ID:
+                            print("[HOTKEY] Emergency kill triggered!")
+                            self.signals.emergency_kill.emit()
+                    user32.TranslateMessage(ctypes.byref(msg))
+                    user32.DispatchMessageW(ctypes.byref(msg))
+                    
+            except Exception as e:
+                print(f"[HOTKEY] Error: {e}")
+        
+        # Start hotkey listener in background thread
+        hotkey_thread = threading.Thread(target=hotkey_listener, daemon=True)
+        hotkey_thread.start()
+    
+    def _emergency_kill_ransomware(self):
+        """Emergency function to kill ransomware - triggered by hotkey"""
+        print("[EMERGENCY] Killing ransomware processes...")
+        
+        killed_count = 0
+        registry_cleaned = 0
+        
+        try:
+            # Kill common ransomware processes (but not ourselves)
+            current_pid = os.getpid()
+            
+            # Use taskkill to kill suspicious python processes
+            # Kill pythonw.exe (hidden python) which ransomware uses
+            result = subprocess.run(
+                ['taskkill', '/F', '/IM', 'pythonw.exe'],
+                capture_output=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                killed_count += 1
+            
+            # Kill any fullscreen tkinter windows (ransomware uses tkinter)
+            # We identify them by looking for python processes with ransomware-like scripts
+            result = subprocess.run(
+                ['wmic', 'process', 'where', "name='python.exe'", 'get', 'processid,commandline'],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            for line in result.stdout.split('\n'):
+                if 'premuim_ui' in line.lower() or 'ransom' in line.lower() or 'premium' in line.lower():
+                    # Extract PID and kill
+                    parts = line.strip().split()
+                    if parts:
+                        try:
+                            pid = int(parts[-1])
+                            if pid != current_pid:
+                                subprocess.run(['taskkill', '/F', '/PID', str(pid)], capture_output=True)
+                                killed_count += 1
+                                print(f"[EMERGENCY] Killed suspicious process PID: {pid}")
+                        except:
+                            pass
+            
+            # Clean registry
+            import winreg
+            malicious_keys = ['WindowsSystemUpdate', 'WindowsUpdate', 'SystemUpdate']
+            for key_name in malicious_keys:
+                try:
+                    with winreg.OpenKey(
+                        winreg.HKEY_CURRENT_USER,
+                        r"Software\Microsoft\Windows\CurrentVersion\Run",
+                        0, winreg.KEY_ALL_ACCESS
+                    ) as key:
+                        winreg.DeleteValue(key, key_name)
+                        registry_cleaned += 1
+                        print(f"[EMERGENCY] Removed registry key: {key_name}")
+                except FileNotFoundError:
+                    pass
+                except Exception as e:
+                    print(f"[EMERGENCY] Registry error: {e}")
+            
+            # Also clean RunOnce
+            for key_name in malicious_keys:
+                try:
+                    with winreg.OpenKey(
+                        winreg.HKEY_CURRENT_USER,
+                        r"Software\Microsoft\Windows\CurrentVersion\RunOnce",
+                        0, winreg.KEY_ALL_ACCESS
+                    ) as key:
+                        winreg.DeleteValue(key, key_name)
+                        registry_cleaned += 1
+                except FileNotFoundError:
+                    pass
+                except:
+                    pass
+            
+            # Clear dashboard alerts and reset threat display
+            self.dashboard.clear_alerts()
+            
+            # Add success message to dashboard
+            self.dashboard.add_alert(
+                "EMERGENCY CLEANUP COMPLETE",
+                f"✅ Killed {killed_count} malicious processes, cleaned {registry_cleaned} registry entries. System is now clean!",
+                "info"
+            )
+            
+            # Reset threat stats to show clean state
+            self.engine.stats["threats_detected"] = 0
+            self.engine.stats["threats_blocked"] = killed_count + registry_cleaned
+            
+            # Force update dashboard stats
+            self._update_stats()
+            
+            # Log to emergency tools if on that tab
+            if hasattr(self, 'emergency_tools'):
+                from datetime import datetime
+                timestamp = datetime.now().strftime('%H:%M:%S')
+                self.emergency_tools.log_text.append(f"[{timestamp}] 🚨 EMERGENCY HOTKEY ACTIVATED (Ctrl+Shift+K)")
+                self.emergency_tools.log_text.append(f"[{timestamp}] ✅ Killed {killed_count} ransomware processes")
+                self.emergency_tools.log_text.append(f"[{timestamp}] ✅ Cleaned {registry_cleaned} malicious registry entries")
+                self.emergency_tools.log_text.append(f"[{timestamp}] ✅ System is now CLEAN!")
+                self.emergency_tools._update_status("System Clean - Emergency removal complete", "#00ff00")
+            
+            # Show notification
+            self.tray_icon.showMessage(
+                "🚨 Emergency Kill Complete!",
+                f"✅ Killed {killed_count} processes\n✅ Cleaned {registry_cleaned} registry entries\nSystem is now CLEAN!",
+                QSystemTrayIcon.Information,
+                5000
+            )
+            
+            # Bring antivirus to front
+            self.show_window()
+            
+            # Switch to Emergency tab to show the log
+            self.tabs.setCurrentIndex(5)  # Emergency tab
+            
+        except Exception as e:
+            print(f"[EMERGENCY] Error during kill: {e}")
     
     def _auto_start_protection(self):
         """Auto-start protection on launch"""

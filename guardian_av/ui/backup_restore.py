@@ -1,5 +1,5 @@
 """
-Guardian Antivirus - Backup & Restore Widget
+Someth Antivirus - Backup & Restore Widget
 Restore files from ransomware backup
 """
 

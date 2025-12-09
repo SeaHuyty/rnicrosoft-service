@@ -1,8 +1,8 @@
-# Guardian Antivirus
+# Someth Antivirus
 
 A professional, modern GUI antivirus application with real-time protection for Windows.
 
-![Guardian Antivirus](https://img.shields.io/badge/Version-1.0.0-green)
+![Someth Antivirus](https://img.shields.io/badge/Version-1.0.0-green)
 ![Python](https://img.shields.io/badge/Python-3.8+-blue)
 ![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey)
 

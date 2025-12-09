@@ -1,5 +1,5 @@
 """
-Guardian Antivirus - Dashboard Widget
+Someth Antivirus - Dashboard Widget
 Main dashboard showing protection status and statistics
 """
 

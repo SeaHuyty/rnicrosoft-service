@@ -1,5 +1,5 @@
 """
-Guardian Antivirus - Modern PyQt5 Stylesheet
+Someth Antivirus - Modern PyQt5 Stylesheet
 Dark theme with professional appearance
 """
 

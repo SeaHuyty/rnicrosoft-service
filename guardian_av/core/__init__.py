@@ -1,4 +1,4 @@
-"""Guardian Antivirus Core Module"""
+"""Someth Antivirus Core Module"""
 from .config_manager import ConfigManager
 from .protection_engine import ProtectionEngine, ThreatInfo, ThreatType, ThreatSeverity
 from .startup_manager import StartupManager

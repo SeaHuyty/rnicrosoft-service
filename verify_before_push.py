@@ -1,5 +1,5 @@
 """
-Guardian Antivirus - Pre-Push Verification Script
+Someth Antivirus - Pre-Push Verification Script
 Run this to verify everything works before pushing to GitHub
 """
 
@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 def run_tests():
     print("=" * 65)
-    print("  GUARDIAN ANTIVIRUS - PRE-PUSH VERIFICATION")
+    print("  SOMETH ANTIVIRUS - PRE-PUSH VERIFICATION")
     print("=" * 65)
     print()
     

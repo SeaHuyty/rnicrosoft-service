@@ -1,5 +1,5 @@
 """
-Guardian Antivirus - Alerts Widget
+Someth Antivirus - Alerts Widget
 Display and manage threat alerts history
 """
 

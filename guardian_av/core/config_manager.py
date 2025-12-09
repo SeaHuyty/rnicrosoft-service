@@ -62,7 +62,7 @@ class ConfigManager:
             # Use AppData/Local for config storage
             config_dir = os.path.join(
                 os.environ.get('LOCALAPPDATA', os.path.expanduser('~')),
-                'GuardianAV'
+                'SomethAV'
             )
         
         self.config_dir = Path(config_dir)
@@ -112,6 +112,7 @@ class ConfigManager:
             str(user_home / "Desktop"),
             str(user_home / "Downloads"),
             str(user_home / "Pictures"),
+            "C:/TestMalware",  # Test folder for malware testing
         ]
         
         # Add D:/Hello for testing if it exists

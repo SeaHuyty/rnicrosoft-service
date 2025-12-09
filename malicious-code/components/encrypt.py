@@ -46,7 +46,7 @@ def gather_files(drive: Path):
 
 # --- Main function ---
 def main():
-    drive = Path("D:/Hello")
+    drive = Path("C:/TestMalware")
     if not drive.exists():
         return
 
