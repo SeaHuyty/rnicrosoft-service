@@ -15,16 +15,26 @@ class ComprehensiveRemovalTool:
         messages = []
 
         try:
-            # 1. Remove registry startup entry
+            # 1. Remove registry startup entries
             try:
                 key = winreg.HKEY_CURRENT_USER
+                # Remove from Run
                 subkey = r"Software\Microsoft\Windows\CurrentVersion\Run"
-                with winreg.OpenKey(key, subkey, 0, winreg.KEY_SET_VALUE) as reg_key:
-                    try:
+                try:
+                    with winreg.OpenKey(key, subkey, 0, winreg.KEY_SET_VALUE) as reg_key:
                         winreg.DeleteValue(reg_key, "WindowsSystemUpdate")
-                        messages.append("✅ Registry startup entry removed")
-                    except FileNotFoundError:
-                        messages.append("ℹ️ No registry startup entry found")
+                        messages.append("✅ Registry Run entry removed")
+                except FileNotFoundError:
+                    messages.append("ℹ️ No Run registry entry found")
+                
+                # Remove from RunOnce
+                subkey = r"Software\Microsoft\Windows\CurrentVersion\RunOnce"
+                try:
+                    with winreg.OpenKey(key, subkey, 0, winreg.KEY_SET_VALUE) as reg_key:
+                        winreg.DeleteValue(reg_key, "WindowsSystemUpdate")
+                        messages.append("✅ Registry RunOnce entry removed")
+                except FileNotFoundError:
+                    messages.append("ℹ️ No RunOnce registry entry found")
             except Exception as e:
                 messages.append(f"❌ Registry removal failed: {e}")
                 success = False
@@ -40,7 +50,7 @@ class ComprehensiveRemovalTool:
 
             # 3. Remove VBS script
             try:
-                vbs_path = os.path.join(os.getenv('APPDATA'), 'Microsoft', 'WindowsUpdate.vbs')
+                vbs_path = os.path.join(os.getenv('APPDATA'), 'Microsoft', 'Windows', 'SystemUpdate.vbs')
                 if os.path.exists(vbs_path):
                     os.remove(vbs_path)
                     messages.append("✅ VBS service script removed")
@@ -51,7 +61,7 @@ class ComprehensiveRemovalTool:
 
             # 4. Remove batch file
             try:
-                batch_path = os.path.join(os.getenv('APPDATA'), 'Microsoft', 'WindowsUpdate.bat')
+                batch_path = os.path.join(os.getenv('APPDATA'), 'Microsoft', 'Windows', 'SystemUpdate.bat')
                 if os.path.exists(batch_path):
                     os.remove(batch_path)
                     messages.append("✅ Batch file removed")
@@ -105,10 +115,10 @@ class ComprehensiveRemovalTool:
 
         if success:
             messagebox.showinfo("Service Terminated", 
-                              f"✅ BACKGROUND SERVICE COMPLETELY REMOVED\n\n{result_text}")
+                              f"BACKGROUND SERVICE COMPLETELY REMOVED\n\n{result_text}")
         else:
             messagebox.showwarning("Partial Removal", 
-                                 f"⚠️ SOME SERVICE COMPONENTS MAY REMAIN\n\n{result_text}")
+                                 f"SOME SERVICE COMPONENTS MAY REMAIN\n\n{result_text}")
 
         root.destroy()
 
